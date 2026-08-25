@@ -344,28 +344,13 @@
         fill: none !important;
       }
 
-      /* Make Mermaid Text Bolder and ensure readability */
+      /* Clean Mermaid Text - No Shadows, just polished font weights */
       .mermaid .label text,
       .mermaid .node text,
       .mermaid .edgeLabel,
       .mermaid .cluster-label text {
           font-weight: 600 !important;
-          /* Add a subtle text shadow that creates a halo effect. 
-             This ensures readability regardless of text color vs fill color. */
-          text-shadow: 
-            0px 0px 3px rgba(255, 255, 255, 0.9),
-            0px 0px 5px rgba(255, 255, 255, 0.9),
-            0px 1px 1px rgba(0, 0, 0, 0.2);
-      }
-      
-      .dark .mermaid .label text,
-      .dark .mermaid .node text,
-      .dark .mermaid .edgeLabel,
-      .dark .mermaid .cluster-label text {
-          text-shadow: 
-            0px 0px 3px rgba(0, 0, 0, 0.9),
-            0px 0px 5px rgba(0, 0, 0, 0.9),
-            0px 1px 1px rgba(255, 255, 255, 0.2);
+          text-shadow: none !important; /* Shadows completely removed */
       }
       
       /* Notion-style Highlight Classes */

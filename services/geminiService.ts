@@ -866,24 +866,17 @@ const MERMAID_GUIDE = ` # MANDATORY MERMAID SYNTAX & VISUAL RULES
    - **timeline**: For temporal events and historical progression.
 
 4. **LAYOUT & VISUAL AESTHETICS (HIGH QUALITY)**:
-   - **Dynamic Layout Engines**: You MUST choose between \`elk\` and \`dagre\` layouts based on diagram complexity and arrow density.
-     - For highly dense, complex, or heavily interconnected flowcharts, use:
-       \`\`\`mermaid
-       %%{init: {"flowchart": {"defaultRenderer": "elk"}}}%%
-       flowchart TD
-       ...
-       \`\`\`
-     - For simpler, standard flowcharts where speed is key, use the default (\`dagre\`):
-       \`\`\`mermaid
-       %%{init: {"flowchart": {"defaultRenderer": "dagre"}}}%%
-       flowchart TD
-       ...
-       \`\`\`
-   - **Diagram Logic & Readability**: Organize charts logically so arrows are easy to follow (e.g., use \`flowchart LR\` for time sequences or linear steps, \`flowchart TD\` for hierarchies). Use subgraphs to group related concepts.
-   - **Complex & Topic-Specific Color Coding**: You MUST use \`classDef\` to color-code your nodes semantically for a better aesthetic look! Define classes that make sense for the topic.
-     - **CRITICAL READABILITY**: You MUST always specify a explicitly high-contrast \`color\` in your \`classDef\` to ensure text is easily readable (e.g., use \`color:#ffffff\` for dark fills like \`#c62828\` or \`#1976d2\`, and \`color:#000000\` for light fills like \`#fbc02d\` or \`#ffebee\`).
-     - Example: \`classDef pathology fill:#ffebee,stroke:#c62828,color:#000000\`
-     - Example: \`classDef treatment fill:#2e7d32,stroke:#1b5e20,color:#ffffff\`
+   - **Dynamic Layout Engines**: You MUST ALWAYS use the \`elk\` layout engine for flowcharts to ensure perfect orthogonal lines and straight arrowheads. NEVER use the default \`dagre\` engine.
+     \`\`\`mermaid
+     %%{init: {"flowchart": {"defaultRenderer": "elk"}}}%%
+     flowchart TD
+     ...
+     \`\`\`
+   - **Diagram Logic & Readability**: Organize charts logically so arrows are easy to follow.
+   - **Complex & Topic-Specific Color Coding**: You MUST use \`classDef\` to color-code your nodes semantically for a better aesthetic look!
+     - **CRITICAL READABILITY (NO SHADOWS)**: Because we rely purely on clean design (no text shadows), you MUST always specify an explicitly high-contrast \`color\` AND a \`stroke\` in your \`classDef\`. This prevents Dark Mode from stripping colors when the diagram expands.
+     - Example for Dark Fills: \`classDef darkNode fill:#1976d2,stroke:#0d47a1,color:#ffffff;\`
+     - Example for Light Fills: \`classDef lightNode fill:#e8f5e9,stroke:#2e7d32,color:#000000;\`
    - Apply them directly: \`class A,B,C pathology;\` or \`NodeA["Label"]:::pathology\`.
    - **CRITICAL**: If your node label contains parentheses \`()\`, brackets \`[]\`, or special characters, you MUST enclose the label in quotes: \`NodeA["Label with (Parentheses)"]\`. Never use unquoted parentheses inside node labels.
    - **CRITICAL**: Never use reserved keywords like \`end\` or \`start\` as a class name or node ID (e.g. use \`endNode\` instead of \`end\`).
