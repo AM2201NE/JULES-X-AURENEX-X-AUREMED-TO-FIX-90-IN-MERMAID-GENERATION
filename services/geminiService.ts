@@ -869,7 +869,7 @@ const MERMAID_GUIDE = ` # MANDATORY MERMAID SYNTAX & VISUAL RULES
    - **Dynamic Layout Engines**: You MUST choose between \`elk\` and \`dagre\` layouts based on diagram complexity and arrow density.
      - For highly dense, complex, or heavily interconnected flowcharts, use:
        \`\`\`mermaid
-       %%{init: {"flowchart": {"defaultRenderer": "elk"}}}%%
+       %%{init: {"flowchart": {"defaultRenderer": "elk", "curve": "step"}}}%%
        flowchart TD
        ...
        \`\`\`
