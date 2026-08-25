@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Aurenex</title>
+    <script>
+      window.addEventListener('unhandledrejection', function(event) {
+        if (event.reason && event.reason.message && event.reason.message.includes('WebSocket')) {
+          event.preventDefault();
+        }
+      });
+      const originalError = console.error;
+      console.error = function(...args) {
+          if (typeof args[0] === 'string' && args[0].includes('[vite] failed to connect to websocket')) {
+              return;
+          }
+          originalError.apply(console, args);
+      };
+    </script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          container: {
+            center: true,
+            padding: "2rem",
+            screens: {
+              "2xl": "1400px",
+            },
+          },
+          extend: {
+            colors: {
+              border: "hsl(var(--border))",
+              input: "hsl(var(--input))",
+              ring: "hsl(var(--ring))",
+              background: "hsl(var(--background))",
+              foreground: "hsl(var(--foreground))",
+              primary: {
+                DEFAULT: "hsl(var(--primary))",
+                foreground: "hsl(var(--primary-foreground))",
+              },
+              secondary: {
+                DEFAULT: "hsl(var(--secondary))",
+                foreground: "hsl(var(--secondary-foreground))",
+              },
+              destructive: {
+                DEFAULT: "hsl(var(--destructive))",
+                foreground: "hsl(var(--destructive-foreground))",
+              },
+              muted: {
+                DEFAULT: "hsl(var(--muted))",
+                foreground: "hsl(var(--muted-foreground))",
+              },
+              accent: {
+                DEFAULT: "hsl(var(--accent))",
+                foreground: "hsl(var(--accent-foreground))",
+              },
+              popover: {
+                DEFAULT: "hsl(var(--popover))",
+                foreground: "hsl(var(--popover-foreground))",
+              },
+              card: {
+                DEFAULT: "hsl(var(--card))",
+                foreground: "hsl(var(--card-foreground))",
+              },
+              gold: "hsl(var(--gold))",
+            },
+            borderRadius: {
+              lg: `var(--radius)`,
+              md: `calc(var(--radius) - 2px)`,
+              sm: "calc(var(--radius) - 4px)",
+              card: `var(--card-radius)`,
+            },
+            keyframes: {
+              'fade-in': {
+                '0%': { opacity: '0' },
+                '100%': { opacity: '1' },
+              },
+              'fade-in-up': {
+                '0%': { opacity: '0', transform: 'translateY(1rem)' },
+                '100%': { opacity: '1', transform: 'translateY(0)' },
+              },
+              'scale-in': {
+                  '0%': { opacity: '0', transform: 'scale(0.95)' },
+                  '100%': { opacity: '1', transform: 'scale(1)' },
+              },
+              'subtle-scale-in': {
+                  '0%': { opacity: '0', transform: 'scale(0.98)' },
+                  '100%': { opacity: '1', transform: 'scale(1)' },
+              },
+              'slide-in-from-bottom': {
+                  '0%': { transform: 'translateY(100%)' },
+                  '100%': { transform: 'translateY(0)' },
+              },
+               'slide-in-left': {
+                  '0%': { transform: 'translateX(-20px)', opacity: '0' },
+                  '100%': { transform: 'translateX(0)', opacity: '1' },
+              },
+              'slide-in-right': {
+                  '0%': { transform: 'translateX(20px)', opacity: '0' },
+                  '100%': { transform: 'translateX(0)', opacity: '1' },
+              },
+              'highlight-block': {
+                '0%': { 'background-color': 'hsla(var(--primary), 0.3)' },
+                '100%': { 'background-color': 'transparent' },
+              },
+              'highlight-citation': {
+                '0%, 20%': { 'background-color': 'hsla(50, 100%, 50%, 0.4)', 'box-shadow': '0 0 0 2px hsla(50, 100%, 50%, 0.8)' },
+                '100%': { 'background-color': 'transparent', 'box-shadow': 'none' },
+              },
+               aurora: {
+                  from: { backgroundPosition: '50% 50%, 50% 50%' },
+                  to: { backgroundPosition: '350% 50%, 350% 50%' },
+               },
+               shimmer: {
+                  '0%': { backgroundPosition: '200% 0' },
+                  '100%': { backgroundPosition: '-200% 0' }
+               },
+               'background-pan': {
+                  '0%': { 'background-position': '0% 50%' },
+                  '50%': { 'background-position': '100% 50%' },
+                  '100%': { 'background-position': '0% 50%' },
+               },
+               glow: {
+                  '0%': { 'box-shadow': '0 0 0 0 hsla(var(--primary), 0.3)' },
+                  '100%': { 'box-shadow': '0 0 8px 4px transparent' },
+               },
+               'highlight-pulse': {
+                  '0%': { 'box-shadow': '0 0 0px 0px hsl(var(--gold))' },
+                  '70%': { 'box-shadow': '0 0 6px 8px transparent' },
+                  '100%': { 'box-shadow': '0 0 0px 0px transparent' },
+               },
+               'subtle-bounce': {
+                '0%, 100%': { transform: 'translateY(0)' },
+                '50%': { transform: 'translateY(-3px)' }
+               }
+            },
+            animation: {
+              'fade-in': 'fade-in 0.4s ease-out forwards',
+              'fade-in-fast': 'fade-in 0.2s ease-out forwards',
+              'fade-in-up': 'fade-in-up 0.5s cubic-bezier(0.25, 1, 0.5, 1) forwards',
+              'scale-in': 'scale-in 0.2s cubic-bezier(0.25, 1, 0.5, 1) forwards',
+              'subtle-scale-in': 'subtle-scale-in 0.3s ease-out forwards',
+              'slide-in-from-bottom': 'slide-in-from-bottom 0.5s cubic-bezier(0.25, 1, 0.5, 1) forwards',
+              'slide-in-left': 'slide-in-left 0.3s ease-out forwards',
+              'slide-in-right': 'slide-in-right 0.3s ease-out forwards',
+              'highlight-block': 'highlight-block 2s ease-out forwards',
+              'highlight-citation': 'highlight-citation 10s ease-out forwards',
+              'aurora': 'aurora 60s linear infinite',
+              'shimmer': 'shimmer 5s linear infinite',
+              'background-pan': 'background-pan 20s ease infinite',
+              'glow': 'glow 1.5s ease-out infinite alternate',
+              'highlight-pulse': 'highlight-pulse 1.5s ease-out infinite',
+              'subtle-bounce': 'subtle-bounce 1.5s ease-in-out infinite'
+            },
+          }
+        }
+      }
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" crossorigin="anonymous">
+    
+    <!-- KaTeX for LaTeX rendering (version must match npm katex@0.16.47 used by rehype-katex) -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.47/dist/katex.min.css" crossorigin="anonymous">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.47/dist/katex.min.js" crossorigin="anonymous" onload="window.katexLoaded = true; window.processRenderQueue();"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.47/dist/contrib/auto-render.min.js" crossorigin="anonymous" onload="window.katexLoaded = true; window.processRenderQueue();"></script>
+
+    <!-- Mermaid v11 (must match npm mermaid@^11.16.0 in package.json) -->
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+    
+    <!-- PDF & Document Libraries -->
+    <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+    <script src="https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+    <script>
+      if (window.pdfjsLib) {
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js`;
+      }
+    </script>
+    <script src="https://unpkg.com/docx@8.5.0/build/index.umd.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    
+    <style>
+      :root {
+        --background: 0 0% 100%;
+        --foreground: 224 71% 4%;
+        --card: 0 0% 100%;
+        --card-foreground: 224 71% 4%;
+
+        --popover: 0 0% 100%;
+        --popover-foreground: 224 71% 4%;
+        
+        --primary: 221 83% 53%;
+        --primary-foreground: 210 40% 98%;
+
+        --secondary: 220 15% 96%;
+        --secondary-foreground: 224 71% 4%;
+        
+        --muted: 220 15% 90%;
+        --muted-foreground: 220 10% 40%;
+        
+        --accent: 220 15% 94%;
+        --accent-foreground: 224 71% 4%;
+        
+        --destructive: 0 84% 60%;
+        --destructive-foreground: 0 0% 100%;
+        
+        --border: 220 15% 88%;
+        --input: 220 15% 92%;
+        --ring: 221 83% 53%;
+        
+        --radius: 0.75rem;
+        --card-radius: 10px;
+
+        /* Notion Compatible Highlight Colors (Light Mode) */
+        --highlight-yellow-bg: rgba(253, 245, 178, 1);
+        --highlight-green-bg: rgba(221, 253, 204, 1);
+        --highlight-blue-bg: rgba(208, 235, 255, 1);
+        --highlight-red-bg: rgba(255, 226, 221, 1);
+        --highlight-pink-bg: rgba(255, 219, 238, 0.7);
+        --gold: 38 92% 64%;
+
+        /* HextaUI Compatibility Variables */
+        --hu-font-geist: 'Inter', sans-serif;
+        --hu-font-jetbrains: monospace;
+        --hu-background: 0 0% 100%;
+        --hu-foreground: 224 71% 4%;
+        --hu-card: 0 0% 99%;
+        --hu-card-foreground: 224 71% 4%;
+        --hu-primary: 221 83% 53%;
+        --hu-primary-foreground: 210 40% 98%;
+        --hu-secondary: 220 15% 96%;
+        --hu-secondary-foreground: 224 71% 4%;
+        --hu-muted: 220 15% 90%;
+        --hu-muted-foreground: 220 10% 40%;
+        --hu-accent: 220 15% 94%;
+        --hu-accent-foreground: 224 71% 4%;
+        --hu-destructive: 0 84% 60%;
+        --hu-destructive-foreground: 0 0% 100%;
+        --hu-border: 220 15% 88%;
+        --hu-input: 220 15% 92%;
+        --hu-ring: 221 83% 53%;
+      }
+      .dark {
+        --background: 220 15% 5%;
+        --foreground: 210 40% 98%;
+        --card: 220 15% 12%;
+        --card-foreground: 210 40% 98%;
+
+        --popover: 220 15% 8%;
+        --popover-foreground: 210 40% 98%;
+
+        --primary: 217 91% 60%;
+        --primary-foreground: 210 40% 98%;
+        
+        --secondary: 220 15% 18%;
+        --secondary-foreground: 210 40% 98%;
+
+        --muted: 220 15% 22%;
+        --muted-foreground: 220 10% 60%;
+
+        --accent: 220 15% 20%;
+        --accent-foreground: 210 40% 98%;
+        
+        --destructive: 0 63% 31%;
+        --destructive-foreground: 210 40% 98%;
+
+        --border: 220 15% 25%;
+        --input: 220 15% 22%;
+        --ring: 217 91% 60%;
+
+        /* Notion Compatible Highlight Colors (Dark Mode) */
+        --highlight-yellow-bg: rgba(202, 165, 61, 0.4);
+        --highlight-green-bg: rgba(76, 175, 80, 0.3);
+        --highlight-blue-bg: rgba(33, 150, 243, 0.3);
+        --highlight-red-bg: rgba(244, 67, 54, 0.3);
+        --highlight-pink-bg: rgba(233, 30, 99, 0.3);
+        --gold: 38 92% 64%;
+
+        /* HextaUI Compatibility Variables (Dark) */
+        --hu-background: 220 15% 5%;
+        --hu-foreground: 210 40% 98%;
+        --hu-card: 220 15% 12%;
+        --hu-card-foreground: 210 40% 98%;
+        --hu-primary: 217 91% 60%;
+        --hu-primary-foreground: 210 40% 98%;
+        --hu-secondary: 220 15% 18%;
+        --hu-secondary-foreground: 210 40% 98%;
+        --hu-muted: 220 15% 22%;
+        --hu-muted-foreground: 220 10% 60%;
+        --hu-accent: 220 15% 20%;
+        --hu-accent-foreground: 210 40% 98%;
+        --hu-destructive: 0 63% 31%;
+        --hu-destructive-foreground: 210 40% 98%;
+        --hu-border: 220 15% 25%;
+        --hu-input: 220 15% 22%;
+        --hu-ring: 217 91% 60%;
+      }
+      body {
+        font-family: 'Inter', sans-serif;
+        background-color: hsl(var(--background));
+      }
+      .dark body {
+        background-size: 200% 200%;
+        background-image: linear-gradient(-45deg, hsl(220, 15%, 5%), hsl(220, 15%, 10%), hsl(260, 15%, 8%), hsl(220, 15%, 5%));
+        animation: background-pan 20s ease infinite;
+      }
+      ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+      }
+      ::-webkit-scrollbar-track {
+        background: hsl(var(--card));
+      }
+      ::-webkit-scrollbar-thumb {
+        background-color: hsl(var(--muted));
+        border-radius: 4px;
+        border: 2px solid hsl(var(--card));
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background-color: hsl(var(--muted-foreground));
+      }
+      
+      /* Hide temporary mermaid rendering divs that get left behind */
+      div[id^="dmermaid-"] {
+        position: absolute !important;
+        top: -9999px !important;
+        left: -9999px !important;
+        visibility: hidden !important;
+        z-index: -9999 !important;
+      }
+
+      /* Force Mermaid edges to be linear (no curves) */
+      .mermaid .edgePath .path {
+        stroke-linejoin: miter !important;
+      }
+      /* Override any curve-based path rendering */
+      .mermaid svg path.edge-pattern {
+        fill: none !important;
+      }
+
+      /* Make Mermaid Text Bolder and ensure readability */
+      .mermaid .label text,
+      .mermaid .node text,
+      .mermaid .edgeLabel,
+      .mermaid .cluster-label text {
+          font-weight: 600 !important;
+          /* Add a subtle text shadow that creates a halo effect. 
+             This ensures readability regardless of text color vs fill color. */
+          text-shadow: 
+            0px 0px 3px rgba(255, 255, 255, 0.9),
+            0px 0px 5px rgba(255, 255, 255, 0.9),
+            0px 1px 1px rgba(0, 0, 0, 0.2);
+      }
+      
+      .dark .mermaid .label text,
+      .dark .mermaid .node text,
+      .dark .mermaid .edgeLabel,
+      .dark .mermaid .cluster-label text {
+          text-shadow: 
+            0px 0px 3px rgba(0, 0, 0, 0.9),
+            0px 0px 5px rgba(0, 0, 0, 0.9),
+            0px 1px 1px rgba(255, 255, 255, 0.2);
+      }
+      
+      /* Notion-style Highlight Classes */
+      .highlight-yellow { background-color: var(--highlight-yellow-bg); padding: 0 0.2em; border-radius: 3px; }
+      .highlight-green { background-color: var(--highlight-green-bg); padding: 0 0.2em; border-radius: 3px; }
+      .highlight-blue { background-color: var(--highlight-blue-bg); padding: 0 0.2em; border-radius: 3px; }
+      .highlight-red { background-color: var(--highlight-red-bg); padding: 0 0.2em; border-radius: 3px; }
+      .highlight-pink { background-color: var(--highlight-pink-bg); padding: 0 0.2em; border-radius: 3px; }
+      
+      .permanent-highlight {
+        background-color: hsla(190, 90%, 50%, 0.3);
+        box-shadow: 0 0 0 2px hsla(190, 90%, 50%, 0.6);
+        border-radius: 3px;
+        transition: background-color 0.3s, box-shadow 0.3s;
+      }
+      
+      .frosted-ui {
+          background-color: hsla(var(--card), 0.7);
+          -webkit-backdrop-filter: blur(24px);
+          backdrop-filter: blur(24px);
+          border: 1px solid hsla(var(--border), 0.5);
+      }
+
+      .dragging-lift {
+          transition: transform 0.2s cubic-bezier(0.25, 1, 0.5, 1), box-shadow 0.2s cubic-bezier(0.25, 1, 0.5, 1);
+          transform: scale(1.02);
+          box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+      }
+      
+      .shimmer-bg {
+          position: relative;
+          overflow: hidden;
+          background-color: hsl(var(--muted));
+      }
+      .shimmer-bg::after {
+          content: '';
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          transform: translateX(-100%);
+          background: linear-gradient(90deg, transparent, hsla(var(--background), 0.5), transparent);
+          animation: shimmer 1.5s infinite;
+      }
+      .glow-on-hover:hover {
+        box-shadow: 0 0 12px 2px hsla(var(--primary), 0.2);
+        border-color: hsla(var(--primary), 0.5);
+      }
+      .hide-scrollbar::-webkit-scrollbar {
+        display: none;
+      }
+      .hide-scrollbar {
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+      }
+      /* Custom KaTeX styling for textbook quality */
+      .katex-display {
+        margin: 1.5em 0;
+        overflow-x: auto;
+        overflow-y: hidden;
+        padding: 0.5em 0;
+        -ms-overflow-style: none; /* IE and Edge */
+        scrollbar-width: none; /* Firefox */
+      }
+      .katex-display::-webkit-scrollbar {
+        display: none; /* for Chrome, Safari, and Opera */
+      }
+      /* Ensure display equations are centered within the chat bubble's text flow */
+      .prose .katex-display {
+          display: flex;
+          justify-content: center;
+      }
+      /* Give inline KaTeX room for subscripts/superscripts without overlapping adjacent lines.
+         KaTeX uses strut-based positioning internally with its own line-height: 1.2.
+         We must NOT override .katex's own line-height or vertical-align, as that
+         breaks internal superscript/subscript placement (vlist positioning).
+         We only increase the surrounding text line-height so struts don't clip. */
+      .prose p, .prose li {
+        line-height: 1.7;
+      }
+      
+      .source-context {
+          margin-top: 0.75rem;
+          padding: 0.5rem 0.75rem;
+          background-color: hsl(var(--primary) / 0.1);
+          border: 1px solid hsl(var(--primary) / 0.3);
+          border-radius: 0.5rem;
+          font-size: 0.875rem; /* text-sm */
+          display: inline-flex;
+          flex-wrap: wrap;
+          gap: 0.5rem;
+          align-items: center;
+          color: hsl(var(--foreground));
+          font-weight: 500;
+          border-left: 4px solid hsl(var(--primary));
+      }
+      
+      .source-context strong {
+          color: hsl(var(--primary));
+          font-weight: 700;
+      }
+    </style>
+
+<link rel="stylesheet" href="/index.css">
+</head>
+  <body class="bg-background text-foreground">
+    <div id="root"></div>
+    <script>
+      function setupMermaid() {
+        if (!window.mermaid) return;
+        const isDark = document.documentElement.classList.contains('dark');
+        window.mermaid.initialize({
+          startOnLoad: false,
+          theme: isDark ? 'dark' : 'default',
+          securityLevel: 'loose',
+          fontFamily: 'Inter, sans-serif',
+          flowchart: { curve: 'linear' }
+        });
+      }
+      setupMermaid();
+
+      const observer = new MutationObserver((mutations) => {
+        for(const mutation of mutations) {
+            if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
+                setupMermaid();
+                // If diagrams are already on screen, re-render them
+                if (window.mermaid) {
+                  setTimeout(() => {
+                    window.mermaid.run({ nodes: document.querySelectorAll('.mermaid') }).catch(e => {
+                        const errorMessage = window.getMermaidErrorMessage ? window.getMermaidErrorMessage(e) : e;
+                        console.error("Mermaid re-run error:", errorMessage);
+                    });
+                  }, 100);
+                }
+            }
+        }
+      });
+      observer.observe(document.documentElement, { attributes: true });
+
+      // --- Robust Dynamic Content Rendering ---
+      window.katexLoaded = false;
+      const renderQueue = [];
+      
+      window.processRenderQueue = function() {
+        if (window.katexLoaded && window.renderMathInElement) {
+          while(renderQueue.length > 0) {
+            const element = renderQueue.shift();
+            try {
+              window.renderMathInElement(element, {
+                delimiters: [
+                  {left: '$$', right: '$$', display: true},
+                  {left: '$', right: '$', display: false},
+                  {left: '\\(', right: '\\)', display: false},
+                  {left: '\\[', right: '\\]', display: true}
+                ],
+                throwOnError : false
+              });
+            } catch (e) {
+              console.error("KaTeX rendering error:", e);
+            }
+          }
+        }
+      }
+
+      // Global function for rendering dynamic content like Mermaid and LaTeX
+      window.renderDynamicContent = function(element) {
+        if (!element) return;
+        renderQueue.push(element);
+        window.processRenderQueue();
+      }
+    </script>
+  <script type="module" src="/index.tsx"></script>
+</body>
+</html>

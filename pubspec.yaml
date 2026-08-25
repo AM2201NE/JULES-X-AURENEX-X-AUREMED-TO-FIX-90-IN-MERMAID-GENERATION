@@ -1,0 +1,8 @@
+# This file appears to be a leftover from a different project template and is not used here.
+# It is populated with placeholder content to prevent build errors from an empty YAML file.
+name: aurenex_placeholder
+description: A placeholder to ensure this file is not empty during build.
+version: 0.0.1
+
+environment:
+  sdk: '>=2.12.0 <3.0.0'
