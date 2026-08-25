@@ -1140,7 +1140,7 @@ Apply them: \`class A start;\`, \`class B process;\` etc.
 
 ${FORMATTING_RULES}
 ${MERMAID_GUIDE}
-${CITATION_INSTRUCTION}\`,TRUCTION}`,
+${CITATION_INSTRUCTION}`,
     
     ocr: `You are OCR, a document reconstruction engine.
     Reproduce the document structure exactly using Markdown and LaTeX.

@@ -192,6 +192,16 @@ export function sanitizeMermaidCode(rawChartCode: string): string {
             .replace(/-{3,}>/g, '-->')
             .replace(/={3,}>/g, '==>')
             .replace(/\.{3,}>/g, '..>')
+            .replace(/--\s*['"]([^'"]+)['"]\s*--\|\s*['"]([^'"]+)['"]\s*\|/g, '-->|"$1: $2"|')
+            .replace(/--\|\s*['"]([^'"]+)['"]\s*\|/g, '-->|"$1"|')
+            .replace(/--\|/g, '-->')
+            .replace(/--\(([^)]+)\)-->/g, '-->|"$1"|')
+            .replace(/--\(([^)]+)\)-/g, '-->|"$1"|')
+            .replace(/[ \t]+--[ \t]+([a-zA-Z0-9_]+)[ \t]+([a-zA-Z0-9_]+)/g, ' -- "$1" --> $2')
+
+            // Fix improperly formatted dotted links (e.g. -. "text" . or -. text .->)
+            .replace(/-\.\s*['"]?((?:[^'"\n]|\\\')*?)['"]?\s*\.(->>|->|>|-|\s)/g, '-.->|"$1"|')
+
             // Fix: -.- (invalid dotted arrow) → -.-> 
             .replace(/-\.-/g, '-.->')
             // Fix: -.->> (double arrowhead, AI hallucination) → -.-> 
@@ -212,15 +222,6 @@ export function sanitizeMermaidCode(rawChartCode: string): string {
             // Fix: NODE_STRING where link expected — "text" glued to arrow
             .replace(/(-->|==>|\.\.>)"([^"]+)"\s*([A-Za-z_][A-Za-z0-9_]*)/g, '$1|"$2"| $3')
             .replace(/(-->|==>|\.\.>)"([^"]+)"/g, '$1|"$2"|')
-            .replace(/--\s*['"]([^'"]+)['"]\s*--\|\s*['"]([^'"]+)['"]\s*\|/g, '-->|"$1: $2"|')
-            .replace(/--\|\s*['"]([^'"]+)['"]\s*\|/g, '-->|"$1"|')
-            .replace(/--\|/g, '-->')
-            .replace(/--\(([^)]+)\)-/g, '-->|"$1"|')
-            .replace(/--\(([^)]+)\)-->/g, '-->|"$1"|')
-            .replace(/[ \t]+--[ \t]+([a-zA-Z0-9_]+)[ \t]+([a-zA-Z0-9_]+)/g, ' -- "$1" --> $2')
-            
-            // Fix improperly formatted dotted links (e.g. -. "text" . or -. text .->)
-            .replace(/-\.\s*['"]?((?:[^'"\n]|\\\')*?)['"]?\s*\.(->>|->|>|-|\s)/g, '-.->|"$1"|')
             
             // Normalize <br> to <br/>
             .replace(/<br>/gi, '<br/>')
