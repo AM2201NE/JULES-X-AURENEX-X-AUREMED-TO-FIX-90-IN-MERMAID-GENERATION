@@ -870,7 +870,7 @@ const MERMAID_GUIDE = ` # MANDATORY MERMAID SYNTAX & VISUAL RULES
    - **block-beta / sankey-beta / quadrantChart / requirementDiagram / gitGraph / C4Context**: Choose the specialized diagram type whenever suited for advanced architectures.
 
 4. **LAYOUT & VISUAL AESTHETICS (HIGH QUALITY & EXHAUSTIVE DEPTH)**:
-   - **Adaptive Layout Engines & Frontmatter Config**: You MUST use the ELK renderer frontmatter configuration to ensure adaptive auto-layout:
+   - **Adaptive Layout Engines & Frontmatter Config**: You MUST strictly use frontmatter ELK configuration and detailed semantic node styling (\`:::class\` or \`classDef\`):
      \`\`\`mermaid
      ---
      config:
@@ -878,15 +878,25 @@ const MERMAID_GUIDE = ` # MANDATORY MERMAID SYNTAX & VISUAL RULES
          defaultRenderer: elk
        layout: elk
      ---
-     flowchart TD
-     ...
+     flowchart TB
+         A_Aorta["Aortic Arch"] -- Gives rise to --> C_Carotid["External Carotid Artery"] & S_Subclavian["Subclavian Artery"]
+         C_Carotid -- Gives rise to --> STA["Superior Thyroid Artery"]
+         STA -- Supplies superior pole --> Thyroid["Thyroid Gland (2 Lobes & Isthmus)"]
+         Thyroid -. Drains into .-> STV["Superior & Middle Thyroid Veins"]
+
+         A_Aorta:::artery
+         C_Carotid:::artery
+         STA:::artery
+         Thyroid:::organ
+         STV:::vein
+
+         classDef organ fill:#e8f5e9,stroke:#2e7d32,color:#1b5e20
+         classDef artery fill:#ffebee,stroke:#c62828,color:#b71c1c
+         classDef vein fill:#e3f2fd,stroke:#1565c0,color:#0d47a1
      \`\`\`
    - **Exhaustive Data & Advanced Detail**: NEVER create trivial, superficial, or oversimplified diagrams. Populate nodes with rich, accurate, high-density data, detailed biochemical/physiological steps, mechanisms, and exhaustive structural steps.
    - **Complex & Topic-Specific Color Coding**: You MUST use \`classDef\` to color-code your nodes semantically for a better aesthetic look!
-     - **CRITICAL READABILITY (NO SHADOWS)**: Because we rely purely on clean design (no text shadows), you MUST always specify an explicitly high-contrast \`color\` AND a \`stroke\` in your \`classDef\`. This prevents Dark Mode from stripping colors when the diagram expands.
-     - Example for Dark Fills: \`classDef darkNode fill:#1976d2,stroke:#0d47a1,color:#ffffff;\`
-     - Example for Light Fills: \`classDef lightNode fill:#e8f5e9,stroke:#2e7d32,color:#000000;\`
-   - Apply them directly: \`class A,B,C pathology;\` or \`NodeA["Label"]:::pathology\`.
+     - **CRITICAL READABILITY**: Specify high-contrast \`color\` AND \`stroke\` in your \`classDef\`.
    - **CRITICAL**: If your node label contains parentheses \`()\`, brackets \`[]\`, or special characters, you MUST enclose the label in quotes: \`NodeA["Label with (Parentheses)"]\`. Never use unquoted parentheses inside node labels.
    - **CRITICAL**: Never use reserved keywords like \`end\` or \`start\` as a class name or node ID (e.g. use \`endNode\` instead of \`end\`).
    - Prevent text cutoff using \`<br/>\` manually. Max 3-4 words per line.

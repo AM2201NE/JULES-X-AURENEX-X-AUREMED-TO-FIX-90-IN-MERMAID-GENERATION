@@ -8,7 +8,7 @@ import rehypeRaw from 'rehype-raw';
 // Import KaTeX CSS from npm to ensure version matches rehype-katex's bundled katex
 import 'katex/dist/katex.min.css';
 
-import { sanitizeMermaidCode, stripStylingForRecovery, quickFixMermaid } from '../lib/mermaidUtils';
+import { sanitizeMermaidCode, stripStylingForRecovery, quickFixMermaid, getCachedHealedMermaid, setCachedHealedMermaid } from '../lib/mermaidUtils';
 import { fixMermaidDiagram } from '../services/geminiService';
 
 let loadedMermaid: any = null;
@@ -433,9 +433,15 @@ export const Mermaid: React.FC<MermaidProps> = ({ chart, onOpenModal, viewOnly, 
 
     const initialCleanChartCode = useMemo(() => {
         // Strip trailing HTML artifacts (e.g., <br><br><div...>) that may be appended
-        // after the Mermaid code by the AI output processor. Only strip if the HTML
-        // appears at the very end — never strip mid-content <br> tags.
+        // after the Mermaid code by the AI output processor.
         const rawChartCode = chart.replace(/<br><br>\s*<div[\s\S]*$/, '');
+
+        // Check persistent cache for previously healed version of this chart
+        const cachedHealed = getCachedHealedMermaid(rawChartCode);
+        if (cachedHealed) {
+            return cachedHealed;
+        }
+
         return sanitizeMermaidCode(rawChartCode);
     }, [chart]);
 
@@ -568,6 +574,7 @@ export const Mermaid: React.FC<MermaidProps> = ({ chart, onOpenModal, viewOnly, 
                             setError(null);
                             setActiveChartCode(cleanedCode);
                             lastRenderedCodeRef.current = cleanedCode;
+                            setCachedHealedMermaid(chart, cleanedCode);
                             console.log(`[Mermaid] Auto AI healing succeeded on round ${aiRound}`);
                             return;
                         } catch (e2: any) {
