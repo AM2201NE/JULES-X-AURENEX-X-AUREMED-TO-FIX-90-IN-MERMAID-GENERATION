@@ -523,8 +523,8 @@ const MermaidModal: React.FC<MermaidModalProps> = ({ chart, onClose }) => {
             securityLevel: 'loose',
             fontFamily: 'Inter, sans-serif',
             flowchart: {
-              defaultRenderer: 'elk',
               htmlLabels: false,
+              curve: 'step',
             },
           });
         } catch (initErr) {}
