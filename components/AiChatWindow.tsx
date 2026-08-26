@@ -524,7 +524,6 @@ const MermaidModal: React.FC<MermaidModalProps> = ({ chart, onClose }) => {
             fontFamily: 'Inter, sans-serif',
             flowchart: {
               htmlLabels: false,
-              curve: 'step',
             },
           });
         } catch (initErr) {}

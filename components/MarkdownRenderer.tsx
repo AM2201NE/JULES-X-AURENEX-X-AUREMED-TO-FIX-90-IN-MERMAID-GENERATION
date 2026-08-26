@@ -22,7 +22,7 @@ async function getMermaidInstance() {
             theme: document.documentElement.classList.contains('dark') ? 'dark' : 'default',
             securityLevel: 'loose',
             fontFamily: 'Inter, sans-serif',
-            flowchart: { defaultRenderer: 'dagre', curve: 'step' },
+            flowchart: { defaultRenderer: 'dagre' },
         });
         return loadedMermaid;
     }
@@ -34,7 +34,7 @@ async function getMermaidInstance() {
         theme: document.documentElement.classList.contains('dark') ? 'dark' : 'default',
         securityLevel: 'loose',
         fontFamily: 'Inter, sans-serif',
-        flowchart: { defaultRenderer: 'dagre', curve: 'step' },
+        flowchart: { defaultRenderer: 'dagre' },
     });
     return loadedMermaid;
 }

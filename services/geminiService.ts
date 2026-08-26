@@ -870,7 +870,7 @@ const MERMAID_GUIDE = ` # MANDATORY MERMAID SYNTAX & VISUAL RULES
    - **block-beta / sankey-beta / quadrantChart / requirementDiagram / gitGraph / C4Context**: Choose the specialized diagram type whenever suited for advanced architectures.
 
 4. **LAYOUT & VISUAL AESTHETICS (HIGH QUALITY & EXHAUSTIVE DEPTH)**:
-   - **Adaptive Layout Engines & Frontmatter Config**: You MUST use the ELK renderer frontmatter configuration to ensure adaptive auto-layout and perfect 90° orthogonal arrow routing without staircasing:
+   - **Adaptive Layout Engines & Frontmatter Config**: You MUST use the ELK renderer frontmatter configuration to ensure adaptive auto-layout:
      \`\`\`mermaid
      ---
      config:
