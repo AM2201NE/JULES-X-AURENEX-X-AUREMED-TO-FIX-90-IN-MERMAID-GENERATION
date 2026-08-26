@@ -870,19 +870,17 @@ const MERMAID_GUIDE = ` # MANDATORY MERMAID SYNTAX & VISUAL RULES
    - **block-beta / sankey-beta / quadrantChart / requirementDiagram / gitGraph / C4Context**: Choose the specialized diagram type whenever suited for advanced architectures.
 
 4. **LAYOUT & VISUAL AESTHETICS (HIGH QUALITY & EXHAUSTIVE DEPTH)**:
-   - **Dynamic Layout Engines**: You MUST choose between \`elk\` and \`dagre\` layouts based on diagram complexity and arrow density.
-     - For highly dense, complex, or heavily interconnected flowcharts, use:
-       \`\`\`mermaid
-       %%{init: {"flowchart": {"defaultRenderer": "elk"}}}%%
-       flowchart TD
-       ...
-       \`\`\`
-     - For simpler, standard flowcharts where speed is key, use default (\`dagre\`):
-       \`\`\`mermaid
-       %%{init: {"flowchart": {"defaultRenderer": "dagre"}}}%%
-       flowchart TD
-       ...
-       \`\`\`
+   - **Adaptive Layout Engines & Frontmatter Config**: You MUST use the ELK renderer frontmatter configuration to ensure adaptive auto-layout and perfect 90° orthogonal arrow routing without staircasing:
+     \`\`\`mermaid
+     ---
+     config:
+       flowchart:
+         defaultRenderer: elk
+       layout: elk
+     ---
+     flowchart TD
+     ...
+     \`\`\`
    - **Exhaustive Data & Advanced Detail**: NEVER create trivial, superficial, or oversimplified diagrams. Populate nodes with rich, accurate, high-density data, detailed biochemical/physiological steps, mechanisms, and exhaustive structural steps.
    - **Complex & Topic-Specific Color Coding**: You MUST use \`classDef\` to color-code your nodes semantically for a better aesthetic look!
      - **CRITICAL READABILITY (NO SHADOWS)**: Because we rely purely on clean design (no text shadows), you MUST always specify an explicitly high-contrast \`color\` AND a \`stroke\` in your \`classDef\`. This prevents Dark Mode from stripping colors when the diagram expands.
