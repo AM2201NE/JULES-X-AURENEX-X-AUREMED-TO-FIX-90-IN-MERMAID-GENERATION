@@ -861,22 +861,25 @@ const MERMAID_GUIDE = ` # MANDATORY MERMAID SYNTAX & VISUAL RULES
 3. **DIAGRAM SELECTION (WHAT TYPE TO CHOOSE AND WHEN)**:
    - **flowchart / graph**: For processes, decision trees, pathways, and algorithms.
    - **mindmap**: For hierarchical topic breakdown, brainstorming, or central concepts radiating outward.
-   - **sequenceDiagram**: For interactions over time, communication between entities, protocols.
+   - **sequenceDiagram / zenuml**: For interactions over time, communication protocols, and execution sequences.
    - **classDiagram**: For object-oriented structures or strict relational taxonomic classifications.
-   - **stateDiagram-v2**: For system states, transitions, life-cycles (e.g., patient states from alive to death).
+   - **stateDiagram-v2**: For system states, transitions, life-cycles (e.g., patient states).
    - **journey**: For user journeys or step-by-step experiences over time.
    - **erDiagram**: For entity-relationship database structures or distinct conceptual relationships.
-   - **timeline**: For temporal events and historical progression.
-   - **block-beta / sankey-beta / quadrantChart / requirementDiagram / gitGraph / C4Context**: Choose the specialized diagram type whenever suited for advanced architectures.
+   - **timeline / gantt**: For temporal events, historical progression, and project scheduling.
+   - **block-beta / sankey-beta / quadrantChart / requirementDiagram / gitGraph / C4Context / xychart-beta / pie / packet / kanban / architecture / treemap**: Use specialized diagram syntaxes whenever applicable.
 
 4. **LAYOUT & VISUAL AESTHETICS (HIGH QUALITY & EXHAUSTIVE DEPTH)**:
-   - **Adaptive Layout Engines & Frontmatter Config**: You MUST strictly use frontmatter ELK configuration and detailed semantic node styling (\`:::class\` or \`classDef\`):
+   - **Adaptive Layout Engines & Orthogonal Frontmatter Config**: You MUST strictly use frontmatter ELK configuration with orthogonal edge routing (`curve: step`) for 90° angles and detailed semantic node styling (`:::class` or `classDef`):
      \`\`\`mermaid
      ---
      config:
+       layout: elk
+       elk:
+         mergeEdges: true
        flowchart:
          defaultRenderer: elk
-       layout: elk
+         curve: step
      ---
      flowchart TB
          A_Aorta["Aortic Arch"] -- Gives rise to --> C_Carotid["External Carotid Artery"] & S_Subclavian["Subclavian Artery"]
@@ -2941,7 +2944,7 @@ CRITICAL SYNTAX RULES (Mermaid 11.x):
 8. Edge labels MUST use pipe syntax: A -->|"label"| B.
 9. Dotted arrows: A -.-> B. Thick arrows: A ==> B.
 10. end keyword MUST be on its own line.
-11. Preserve maximum detail, sub-branches, subgraphs, anatomical/technical terms, and semantic color-coding.
+11. ABSOLUTELY MANDATORY: NEVER simplify, truncate, summarize, or alter the diagram content or nodes. FIX ONLY SYNTAX ERRORS. Retain 100% of all nodes, text labels, connections, class assignments, and styling intact.
 12. classDef MUST be placed OUTSIDE subgraphs, at the TOP of the diagram (right after the flowchart/graph declaration), NEVER inside a subgraph body
 13. style format: style NodeID fill:#hex,stroke:#hex,color:#hex (NO quotes around hex!)
 14. class assignments (class A,B className) MUST be placed OUTSIDE subgraphs, after all subgraph definitions
