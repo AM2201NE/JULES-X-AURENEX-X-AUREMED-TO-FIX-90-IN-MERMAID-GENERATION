@@ -845,7 +845,7 @@ const MERMAID_GUIDE = ` # MANDATORY MERMAID SYNTAX & VISUAL RULES
      - \`id{"Text"}\` (Rhombus / Decision)
      - \`id{{"Text"}}\` (Hexagon)
      - \`id>\\"Text\\"]\` (Flag)
-   - **Arrows**:
+   - **Arrows & Visual Definitions**:
      - Solid link: \`A --> B\`
      - Solid line with text: \`A -- "Text" --> B\`
      - Dotted link: \`A -.-> B\`
@@ -854,6 +854,9 @@ const MERMAID_GUIDE = ` # MANDATORY MERMAID SYNTAX & VISUAL RULES
      - Thick link with text: \`A == "Text" ==> B\`
      - Multi-directional: \`A <--> B\`
      - Use arrows specifically to denote flow rate, condition, or importance (e.g. thick for major pathway, dotted for indirect or optional).
+   - **Animated Flow Arrows**:
+     - You can apply link styling and dash animation to arrows for active flows or dynamic pathways using linkStyle:
+       \`linkStyle 0 stroke:#1976d2,stroke-width:2px,stroke-dasharray: 5 5,animation: dash 1s linear infinite;\`
 
 3. **DIAGRAM SELECTION (WHAT TYPE TO CHOOSE AND WHEN)**:
    - **flowchart / graph**: For processes, decision trees, pathways, and algorithms.
@@ -861,18 +864,26 @@ const MERMAID_GUIDE = ` # MANDATORY MERMAID SYNTAX & VISUAL RULES
    - **sequenceDiagram**: For interactions over time, communication between entities, protocols.
    - **classDiagram**: For object-oriented structures or strict relational taxonomic classifications.
    - **stateDiagram-v2**: For system states, transitions, life-cycles (e.g., patient states from alive to death).
-   - **journey**: For user user journeys or step-by-step experiences over time.
+   - **journey**: For user journeys or step-by-step experiences over time.
    - **erDiagram**: For entity-relationship database structures or distinct conceptual relationships.
    - **timeline**: For temporal events and historical progression.
+   - **block-beta / sankey-beta / quadrantChart / requirementDiagram / gitGraph / C4Context**: Choose the specialized diagram type whenever suited for advanced architectures.
 
-4. **LAYOUT & VISUAL AESTHETICS (HIGH QUALITY)**:
-   - **Dynamic Layout Engines**: You MUST ALWAYS use the \`elk\` layout engine for flowcharts to ensure perfect orthogonal lines and straight arrowheads. NEVER use the default \`dagre\` engine.
-     \`\`\`mermaid
-     %%{init: {"flowchart": {"defaultRenderer": "elk"}}}%%
-     flowchart TD
-     ...
-     \`\`\`
-   - **Diagram Logic & Readability**: Organize charts logically so arrows are easy to follow.
+4. **LAYOUT & VISUAL AESTHETICS (HIGH QUALITY & EXHAUSTIVE DEPTH)**:
+   - **Dynamic Layout Engines**: You MUST choose between \`elk\` and \`dagre\` layouts based on diagram complexity and arrow density.
+     - For highly dense, complex, or heavily interconnected flowcharts, use:
+       \`\`\`mermaid
+       %%{init: {"flowchart": {"defaultRenderer": "elk"}}}%%
+       flowchart TD
+       ...
+       \`\`\`
+     - For simpler, standard flowcharts where speed is key, use default (\`dagre\`):
+       \`\`\`mermaid
+       %%{init: {"flowchart": {"defaultRenderer": "dagre"}}}%%
+       flowchart TD
+       ...
+       \`\`\`
+   - **Exhaustive Data & Advanced Detail**: NEVER create trivial, superficial, or oversimplified diagrams. Populate nodes with rich, accurate, high-density data, detailed biochemical/physiological steps, mechanisms, and exhaustive structural steps.
    - **Complex & Topic-Specific Color Coding**: You MUST use \`classDef\` to color-code your nodes semantically for a better aesthetic look!
      - **CRITICAL READABILITY (NO SHADOWS)**: Because we rely purely on clean design (no text shadows), you MUST always specify an explicitly high-contrast \`color\` AND a \`stroke\` in your \`classDef\`. This prevents Dark Mode from stripping colors when the diagram expands.
      - Example for Dark Fills: \`classDef darkNode fill:#1976d2,stroke:#0d47a1,color:#ffffff;\`
@@ -898,6 +909,8 @@ When using the provided workspace context ([Context source: src_N]), you MUST ba
 - ONLY use the bracketed ID corresponding to the source, e.g., "The patient showed symptoms [src_0] and [src_1]."`;
 
 const FORMATTING_RULES = `FORMATTING RULES (STRICT):
+- **EXHAUSTIVE HIGH-DENSITY DEPTH & ACCURACY**: You MUST provide deep, thorough, highly detailed, and complete explanations. Never summarize superficially, simplify complex topics into trivial facts, or give short incomplete answers. Include exact mechanisms, technical terminology, and step-by-step breakdowns.
+- **TAG & CONTEXT INTEGRATION**: When tagged pages (# or tagged workspace items) are present in the query or context, synthesize and extract maximum detail, exact numbers, and deep conceptual relations from those specific tagged files accurately.
 - **LANGUAGE (ABSOLUTELY MANDATORY)**: You MUST output your ENTIRE response (including body text, section headers, bullet points, and Mermaid diagram node labels) in the EXACT SAME language that the user used for their main query/instruction words (e.g., if the prompt starts with English instructions like "explain ...", "describe ...", "what is ...", you MUST write the ENTIRE response in English). Do NOT switch language based on hashtag topic names (e.g., #Système Nerveux), medical terms, or retrieved document language.
 - **NO DRAFTING OR CHAIN OF THOUGHT**: NEVER output your internal drafting process, chain of thought, step-by-step reasoning, or image placement planning (e.g., "Drafting the content...", "Refining with images..."). Output ONLY the final, polished response directly to the user.
 - **HEADINGS**: Use ONLY Level 1 (\`#\`), Level 2 (\`##\`), and Level 3 (\`###\`) headings.
@@ -1928,29 +1941,10 @@ export async function* runAurePalAgent(
 
     // 3. Prepare Tools
     const tools: any[] = [];
-    if (!isGreetingQuery && (searchScope === 'online' || searchScope === 'auto')) {
-       tools.push({ googleSearch: {} });
-       systemInstruction += "\n\nCRITICAL: When using Google Search, you are REQUIRED to add explicit inline citation brackets exactly formatted as [1], [2], etc., directly in the text wherever you source information.";
-    } else if (!isGreetingQuery) {
-        // Only provide fetch_inline_images if NOT using googleSearch to prevent the
-        // include_server_side_tool_invocations requirement that the genai SDK currently strips.
-        tools.push({
-            functionDeclarations: [{
-                name: "fetch_inline_images",
-                description: "Fetch inline images from the provided URLs to view them. Use this when you need to see an image mentioned in the context (e.g., [Image: https://...]). You can request as many images as you need to satisfy the user's query.",
-                parameters: {
-                    type: Type.OBJECT,
-                    properties: {
-                        urls: {
-                            type: Type.ARRAY,
-                            items: { type: Type.STRING },
-                            description: "The URLs of the images to fetch."
-                        }
-                    },
-                    required: ["urls"]
-                }
-            }]
-        });
+    if (!isGreetingQuery) {
+        // Attach Google Search tool for all non-greeting queries
+        tools.push({ googleSearch: {} });
+        systemInstruction += "\n\nCRITICAL: You have access to real-time Google Search capabilities. Whenever web information, latest documentation, or external validation is useful, use Google Search and add explicit inline citation brackets formatted as [1], [2], etc., directly in the text wherever you source information.";
     }
 
     // 4. Chat Session Initialization

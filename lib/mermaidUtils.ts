@@ -1,18 +1,179 @@
 export function sanitizeMermaidCode(rawChartCode: string): string {
     if (!rawChartCode || rawChartCode.trim() === '') return '';
+
     let cleanChart = rawChartCode.trim();
     
+    // ═══════════════════════════════════════════════════════════
+    // PHASE 0: GLOBAL FIXES (applied to ALL diagram types)
+    // ═══════════════════════════════════════════════════════════
+
+    // Fix hex color codes — MUST run before anything else.
+    // Mermaid 11.x does NOT accept quoted hex colors in classDef/style.
+    // Quoted hex like fill:"#abc" causes: "Expecting 'SEMI', 'NEWLINE'... got 'STR'"
+    // Strategy: REMOVE quotes from hex values, and add # to bare hex.
+
+    // ULTRA-AGGRESSIVE: Remove ALL quotes around hex values anywhere in the code.
+    // This catches fill:"#abc", stroke:"#def", color:"#fff", and any other quoted hex.
+    // Pattern: any word followed by :"#hex" or :"hex" → remove the quotes.
+    cleanChart = cleanChart.replace(
+        /(\w+\s*:\s*)"(#[0-9a-fA-F]{3,8})"/gi,
+        '$1$2'
+    );
+    // Also catch bare hex in quotes: fill:"abc" → fill:#abc
+    cleanChart = cleanChart.replace(
+        /(\w+\s*:\s*)"([0-9a-fA-F]{3,8})"/gi,
+        '$1#$2'
+    );
+    // Catch quoted hex after commas: ,"#abc" → ,#abc
+    cleanChart = cleanChart.replace(
+        /(,\s*)"(#[0-9a-fA-F]{3,8})"/gi,
+        '$1$2'
+    );
+    // Catch bare hex after commas in quotes: ,"abc" → ,#abc
+    cleanChart = cleanChart.replace(
+        /(,\s*)"([0-9a-fA-F]{3,8})"/gi,
+        '$1#$2'
+    );
+    // Bare hex without # (6 or 8 chars, starts with digit) → add #
+    cleanChart = cleanChart.replace(
+        /((?:fill|stroke|color|background|bg)\s*:\s*)([0-9][0-9a-fA-F]{5,7})(?=\s*[,;\n\r\)]|$)/gi,
+        '$1#$2'
+    );
+    // Bare hex without # (3 chars, starts with digit) → add #
+    cleanChart = cleanChart.replace(
+        /((?:fill|stroke|color|background|bg)\s*:\s*)([0-9][0-9a-fA-F]{2})(?=\s*[,;\n\r\)]|$)/gi,
+        '$1#$2'
+    );
+
     // Check if it has a known diagram type, ignoring leading comments (%%)
-    const knownTypes = ['flowchart', 'graph', 'mindmap', 'sequenceDiagram', 'classDiagram', 'stateDiagram', 'erDiagram', 'journey', 'gantt', 'pie', 'quadrantChart', 'requirementDiagram', 'gitGraph', 'C4Context', 'C4Container', 'C4Component', 'C4Dynamic', 'C4Deployment', 'timeline', 'zenuml', 'sankey-beta', 'xychart-beta', 'block-beta'];
+    const knownTypes = ['flowchart', 'graph', 'mindmap', 'sequenceDiagram', 'classDiagram', 'stateDiagram', 'erDiagram', 'journey', 'gantt', 'pie', 'quadrantChart', 'requirementDiagram', 'gitGraph', 'C4Context', 'C4Container', 'C4Component', 'C4Dynamic', 'C4Deployment', 'timeline', 'zenuml', 'sankey-beta', 'xychart-beta', 'block-beta', 'architecture-beta', 'kanban', 'packet', 'treemap', 'venn', 'cynefin', 'ishikawa', 'wardley', 'treeView'];
+
+    // ═══ FIX INIT DIRECTIVES ═══
+    // Mermaid requires %%{init:...}%% to be at the very top, BEFORE the flowchart/graph declaration.
+    // AI often puts it on line 2 (after flowchart TD), which breaks parsing.
+    // Strategy: extract all %%{init:...}%% directives, remove them, and prepend to the chart.
+    const initDirectives: string[] = [];
+    cleanChart = cleanChart.replace(/^%%\{init:[\s\S]*?\}%%\s*$/gm, (match) => {
+        initDirectives.push(match.trim());
+        return '';
+    });
+    // Re-insert init directives at the very top
+    if (initDirectives.length > 0) {
+        cleanChart = initDirectives.join('\n') + '\n' + cleanChart;
+    }
+
+    // ═══ REMOVE DUPLICATE FLOWCHART/GRAPH DECLARATIONS ═══
+    // AI sometimes generates multiple flowchart TD lines. Keep only the first one.
+    let firstDeclFound = false;
+    cleanChart = cleanChart.replace(/^(flowchart\s+[A-Z]{2}|graph\s+[A-Z]{2})\s*$/gim, (match) => {
+        if (firstDeclFound) {
+            return ''; // Remove duplicate
+        }
+        firstDeclFound = true;
+        return match;
+    });
     
     // Fix AI repeating flowchart directives or gluing them
-    cleanChart = cleanChart.replace(/(flowchart\s+[A-Z]{2})\s*[A-Za-z0-9]*flowchart\s+[A-Z]{2}/gi, '$1');
-    cleanChart = cleanChart.replace(/(graph\s+[A-Z]{2})\s*[A-Za-z0-9]*graph\s+[A-Z]{2}/gi, '$1');
+    // First, collapse any doubled flowchart/graph declarations on the same line
+    cleanChart = cleanChart.replace(/^(flowchart\s+[A-Z]{2})\s*flowchart\s+[A-Z]{2}/gim, '$1');
+    cleanChart = cleanChart.replace(/^(graph\s+[A-Z]{2})\s*graph\s+[A-Z]{2}/gim, '$1');
+    // Then ensure newline between declaration and next keyword
     cleanChart = cleanChart.replace(/(flowchart\s+[A-Z]{2})\s*(classDef|class|subgraph|style|click)/gi, '$1\n$2');
     cleanChart = cleanChart.replace(/(graph\s+[A-Z]{2})\s*(classDef|class|subgraph|style|click)/gi, '$1\n$2');
     
+    // ═══ AUTO-FIX MISSING NEWLINES ═══
+    // Fix: "direction TD NodeID" → "direction TD\n    NodeID"
+    cleanChart = cleanChart.replace(
+        /\bdirection\s+(TD|TB|LR|RL|BT)\s*([^\n\r])/gi,
+        'direction $1\n    $2'
+    );
+    // Fix glued case: "direction TDHypothalamus" → "direction TD\n    Hypothalamus"
+    cleanChart = cleanChart.replace(
+        /\bdirection\s+(TD|TB|LR|RL|BT)([A-Za-z_])/gi,
+        'direction $1\n    $2'
+    );
+
+    // Fix: "subgraph X ["Title"] NodeID" → "subgraph X ["Title"]\n    NodeID"
+    cleanChart = cleanChart.replace(
+        /(\bsubgraph\s+\w+(?:\s*\[[\s\S]*?\])?)\s+([A-Za-z_][A-Za-z0-9_]*(?:\[|\(|\(|\{|\>|\"))/g,
+        '$1\n    $2'
+    );
+
+    // ═══ MOVE classDef/class OUT OF SUBGRAPHS ═══
+    // Mermaid requires classDef and class assignments to be at the top level,
+    // NOT inside subgraph bodies. AI often puts them inside subgraphs.
+    // Strategy: extract all classDef/class lines, remove them from subgraph bodies,
+    // and re-insert them right after the flowchart/graph declaration.
+    const classDefLines: string[] = [];
+    const classLines: string[] = [];
+
+    // Extract classDef lines
+    cleanChart = cleanChart.replace(/^\s*classDef\s+.*$/gm, (match) => {
+        classDefLines.push(match.trim());
+        return '';
+    });
+
+    // Extract class assignment lines (class NodeID1,NodeID2 className)
+    cleanChart = cleanChart.replace(/^\s*class\s+[A-Za-z_][A-Za-z0-9_,\s]+\s+[A-Za-z_][A-Za-z0-9_]+\s*$/gm, (match) => {
+        classLines.push(match.trim());
+        return '';
+    });
+
+    // Re-insert classDef and class lines right after the flowchart/graph declaration
+    if (classDefLines.length > 0 || classLines.length > 0) {
+        const allStyleLines = [...classDefLines, ...classLines].join('\n');
+        // Insert after the flowchart/graph declaration line (skip init directives)
+        const lines = cleanChart.split('\n');
+        const insertIdx = lines.findIndex(l => /^(flowchart|graph)\s+[A-Z]{2}/i.test(l.trim()));
+        if (insertIdx >= 0) {
+            lines.splice(insertIdx + 1, 0, allStyleLines);
+            cleanChart = lines.join('\n');
+        } else {
+            // Fallback: insert after first non-empty line
+            const fallbackIdx = lines.findIndex(l => l.trim().length > 0);
+            if (fallbackIdx >= 0) {
+                lines.splice(fallbackIdx + 1, 0, allStyleLines);
+                cleanChart = lines.join('\n');
+            }
+        }
+    }
+
+    // Clean up triple+ newlines from removals
+    cleanChart = cleanChart.replace(/\n{3,}/g, '\n\n');
+
+    // Fix: "NodeID --> NodeID2 end" → "NodeID --> NodeID2\nend"
+    // Also handles: NodeID["text"]end, NodeID("text")end, NodeID{"text"}end, etc.
+    cleanChart = cleanChart.replace(
+        /([^\n])\s*\bend\b/g,
+        '$1\nend'
+    );
+    // Fix: NodeID["text"]end (no space before end — bracket directly followed by end)
+    cleanChart = cleanChart.replace(
+        /(\][\]\)\}\>])\s*end\b/g,
+        '$1\nend'
+    );
+    // Fix: NodeID["text"]end (no space, no bracket — label text directly followed by end)
+    cleanChart = cleanChart.replace(
+        /(\"[^\"]*\")\s*end\b/g,
+        '$1\nend'
+    );
+    // But don't double-add newline if end is already on its own line
+    cleanChart = cleanChart.replace(/\n\s*end\s*\n\s*end/g, '\nend');
+
+    // ═══ FIX MARKDOWN STRING MISUSE ═══
+    // Fix: A[`**text**`] → A["`**text**`"] (missing outer double quotes)
+    cleanChart = cleanChart.replace(
+        /(\b[A-Za-z0-9_]+)\[`([^\]`]+)`\]/g,
+        '$1["`$2`"]'
+    );
+    // Fix: A['`text`'] → A["`text`"] (single quotes → double quotes)
+    cleanChart = cleanChart.replace(
+        /(\b[A-Za-z0-9_]+)\['`([^']+)`'\]/g,
+        '$1["`$2`"]'
+    );
+
     // Create a version of the chart without leading comments/directives for type checking
-    const chartWithoutComments = cleanChart.replace(/^(?:\s*%%.*)+/gm, '').trim();
+    const chartWithoutComments = cleanChart.replace(/^(?:\s*%%.*|\s*classDef\s+.*|\s*class\s+.*)+/gm, '').trim();
     const hasDiagramType = knownTypes.some(type => chartWithoutComments.startsWith(type));
     
     if (!hasDiagramType && cleanChart.includes('-->')) {
@@ -21,40 +182,142 @@ export function sanitizeMermaidCode(rawChartCode: string): string {
     }
 
     const isFlowchart = chartWithoutComments.startsWith('flowchart') || chartWithoutComments.startsWith('graph');
+    const isMindmap = chartWithoutComments.startsWith('mindmap');
+
+    // Preserve layout renderer preferences (e.g. elk or dagre) specified in init directives
     
     if (isFlowchart) {
         cleanChart = cleanChart
-            // Automatically wrap naked node text in quotes for brackets, braces, parens
-            .replace(/\[([^\[\]"]+)\]/g, '["$1"]')
-            .replace(/\{([^{}"]+)\}/g, '{"$1"}')
-            .replace(/"[^"]*"|\(([^()]+)\)/g, (m, g1) => {
-                if (g1 === undefined) return m;
-                if (!g1.startsWith('"') || !g1.endsWith('"')) return `("${g1}")`;
-                return m;
-            })
-            // Add newlines before node text brackets to please parsed rules without breaks
-            .replace(/([\]\)])\s+([A-Za-z][A-Za-z0-9_]*\[)/g, '$1\n$2')
-            .replace(/([\]\)])([A-Za-z][A-Za-z0-9_]*\s*[\(\[\{])/g, '$1\n$2')
-            .replace(/ "([a-zA-Z0-9\s\.]+)" /g, " '$1' ")
-            .replace(/([a-zA-Z0-9])"([a-zA-Z0-9])/g, "$1'$2")
-            .replace(/"([a-zA-Z0-9\s?]+)"</g, "'$1'<")
             // Fix broken arrow syntax (e.g., ---> converted to -->)
             .replace(/-{3,}>/g, '-->')
             .replace(/={3,}>/g, '==>')
             .replace(/\.{3,}>/g, '..>')
+            // Fix: -.- (invalid dotted arrow) → -.->
+            .replace(/-\.-/g, '-.->')
+            // Fix: -.->> (double arrowhead, AI hallucination) → -.->
+            .replace(/-\.->>/g, '-.->')
+            // Fix: -.- text .-> or -. text .- → -.->|text|
+            .replace(/-\.\s*['"]?([^'"\n.]+?)['"]?\s*\.-/g, '-.->|"$1"|')
+            // Fix: NodeA --> NodeB: "Label" → NodeA -->|"Label"| NodeB
+            .replace(/(-->|==>|\.\.>|--\s*x\s*--)\s+([A-Za-z_][A-Za-z0-9_]*)\s*:\s*"([^"]*)"/g, '$1|"$3"| $2')
+            .replace(/(-->|==>|\.\.>|--\s*x\s*--)\s+([A-Za-z_][A-Za-z0-9_]*)\s*:\s*'([^']*)'/g, "$1|'$3'| $2")
+            // Fix: NodeA --> NodeB: Label (unquoted) → NodeA -->|Label| NodeB
+            .replace(/(-->|==>|\.\.>|--\s*x\s*--)\s+([A-Za-z_][A-Za-z0-9_]*)\s*:\s*([A-Za-z_][A-Za-z0-9_ ]*?)(?:\s*$|\s*\n)/gm, '$1|"$3"| $2\n')
+            // Fix: NodeA -->: "Label" NodeB (colon right after arrow)
+            .replace(/(-->|==>|\.\.>)\s*:\s*"([^"]*)"\s+([A-Za-z_][A-Za-z0-9_]*)/g, '$1|"$2"| $3')
+            .replace(/(-->|==>|\.\.>)\s*:\s*'([^']*)'\s+([A-Za-z_][A-Za-z0-9_]*)/g, "$1|'$2'| $3")
+            // Fix: NodeA --> "Label" (missing target — label where node should be)
+            .replace(/(-->|==>|\.\.>)\s+"([^"]+)"\s*$/gm, '$1 $2')
+            .replace(/(-->|==>|\.\.>)\s+'([^']+)'\s*$/gm, "$1 $2")
+            // Fix: NODE_STRING where link expected — "text" glued to arrow
+            .replace(/(-->|==>|\.\.>)"([^"]+)"\s*([A-Za-z_][A-Za-z0-9_]*)/g, '$1|"$2"| $3')
+            .replace(/(-->|==>|\.\.>)"([^"]+)"/g, '$1|"$2"|')
             .replace(/--\s*['"]([^'"]+)['"]\s*--\|\s*['"]([^'"]+)['"]\s*\|/g, '-->|"$1: $2"|')
             .replace(/--\|\s*['"]([^'"]+)['"]\s*\|/g, '-->|"$1"|')
             .replace(/--\|/g, '-->')
             .replace(/--\(([^)]+)\)-/g, '-->|"$1"|')
             .replace(/--\(([^)]+)\)-->/g, '-->|"$1"|')
             .replace(/[ \t]+--[ \t]+([a-zA-Z0-9_]+)[ \t]+([a-zA-Z0-9_]+)/g, ' -- "$1" --> $2')
+
             // Fix improperly formatted dotted links (e.g. -. "text" . or -. text .->)
             .replace(/-\.\s*['"]?((?:[^'"\n]|\\\')*?)['"]?\s*\.(->>|->|>|-|\s)/g, '-.->|"$1"|')
-            // Remove illegal HTML tags and trailing semicolons
+
+            // Normalize <br> to <br/>
             .replace(/<br>/gi, '<br/>')
-            .replace(/;\s*$/gm, '');
+            // Remove trailing semicolons
+            .replace(/;\s*$/gm, '')
+            // Fix: NodeID[text](citation:local:X) → NodeID["text (citation:local:X)"]
+            .replace(/(\b[A-Za-z_][A-Za-z0-9_]*)\[([^\]]*?)\]\(([^)]*:[^)]*)\)/g, '$1["$2 ($3)"]')
+            // Fix: NodeID(citation:local:X) → NodeID["(citation:local:X)"]
+            .replace(/(\b[A-Za-z_][A-Za-z0-9_]*)\(([^)]*:[^)]*)\)/g, '$1["($2)"]')
+            // Fix: NodeID[text](anything with colon) → NodeID["text (anything with colon)"]
+            .replace(/(\b[A-Za-z_][A-Za-z0-9_]*)\[([^\]]*?)\]\(([^)]*)\)/g, '$1["$2 ($3)"]')
+            // Fix: bare parenthetical with colon after node: NodeID (text: more) → NodeID["(text: more)"]
+            .replace(/(\b[A-Za-z_][A-Za-z0-9_]*)\s+\(([^)]*:[^)]*)\)/g, '$1["($2)"]')
+            // Fix: round-bracket nodes with nested parens: NodeID(text (parens)) → NodeID["text (parens)"]
+            // Mermaid's () syntax can't handle nested parens — convert to bracket-quote syntax
+            .replace(/(\b[A-Za-z_][A-Za-z0-9_]*)\(([^()]*\([^()]*\)[^()]*)\)/g, '$1["$2"]')
+            // Fix: round-bracket nodes with any parentheses in label → convert to bracket-quote
+            .replace(/(\b[A-Za-z_][A-Za-z0-9_]*)\(([^()]*\([^)]*\)[^()]*)\)/g, '$1["$2"]')
+            // Fix: round-bracket nodes with special chars (colons, commas, etc.) → bracket-quote
+            .replace(/(\b[A-Za-z_][A-Za-z0-9_]*)\(([^)]*[:,][^)]*)\)/g, '$1["$2"]');
+    } else if (isMindmap) {
+        cleanChart = cleanChart.replace(/:::[a-zA-Z0-9_-]+/g, '');
     }
     
+    // ═══════════════════════════════════════════════════════════
+    // PHASE 3: FINAL SAFETY NET (applied to ALL diagram types)
+    // ═══════════════════════════════════════════════════════════
+    // Final sweep: "direction XX <content>" on the same line
+    cleanChart = cleanChart.replace(
+        /\bdirection\s+(TD|TB|LR|RL|BT)\s*([^\n\r])/gi,
+        'direction $1\n    $2'
+    );
+    // Final sweep: any line with "end" glued to content before it
+    cleanChart = cleanChart.replace(
+        /([^\n\r])\s*\bend\b/g,
+        '$1\nend'
+    );
+    // Final sweep: end glued to closing bracket (e.g., NodeID["text"]end)
+    cleanChart = cleanChart.replace(
+        /(\][\]\)\}\>])\s*end\b/g,
+        '$1\nend'
+    );
+    // Final sweep: end glued to quoted string (e.g., NodeID["text"]end)
+    cleanChart = cleanChart.replace(
+        /(\"[^\"]*\")\s*end\b/g,
+        '$1\nend'
+    );
+    // Final sweep: catch any remaining "--> NodeID: \"text\"" patterns
+    cleanChart = cleanChart.replace(
+        /(-->|==>|\.\.>)\s+([A-Za-z_][A-Za-z0-9_]*)\s*:\s*"([^"]*)"/g,
+        '$1|"$3"| $2'
+    );
+    cleanChart = cleanChart.replace(
+        /(-->|==>|\.\.>)\s+([A-Za-z_][A-Za-z0-9_]*)\s*:\s*'([^']*)'/g,
+        "$1|'$3'| $2"
+    );
+    // Final sweep: fix any remaining -.- patterns (invalid dotted arrows)
+    cleanChart = cleanChart.replace(/-\.-/g, '-.->');
+    // Final sweep: fix any remaining -.->> patterns (double arrowhead hallucination)
+    cleanChart = cleanChart.replace(/-\.->>/g, '-.->');
+    // Final sweep: fix NODE_STRING errors — quoted strings where links expected
+    cleanChart = cleanChart.replace(
+        /(-->|==>|\.\.>)"([^"]+)"\s*([A-Za-z_][A-Za-z0-9_]*)/g,
+        '$1|"$2"| $3'
+    );
+    cleanChart = cleanChart.replace(
+        /(-->|==>|\.\.>)"([^"]+)"/g,
+        '$1|"$2"|'
+    );
+    // Final sweep: fix bare quoted strings on their own line (Mermaid expects a statement)
+    cleanChart = cleanChart.replace(
+        /^(\s*)"([^"]+)"\s*$/gm,
+        '$1N"$2"'
+    );
+    // Final sweep: hex colors one more time — REMOVE any quotes that may have been
+    // re-introduced (e.g., by AI output or previous sanitizer versions).
+    // Mermaid 11.x does NOT accept quoted hex. Period.
+    cleanChart = cleanChart.replace(
+        /((?:fill|stroke|color|background|bg)\s*:\s*)"(#[0-9a-fA-F]{3,8})"/gi,
+        '$1$2'
+    );
+    cleanChart = cleanChart.replace(
+        /((?:fill|stroke|color|background|bg)\s*:\s*)"([0-9a-fA-F]{3,8})"/gi,
+        '$1#$2'
+    );
+    // Also catch any quoted hex after commas
+    cleanChart = cleanChart.replace(
+        /(,\s*)"(#[0-9a-fA-F]{3,8})"/gi,
+        '$1$2'
+    );
+    cleanChart = cleanChart.replace(
+        /(,\s*)"([0-9a-fA-F]{3,8})"/gi,
+        '$1#$2'
+    );
+    // Clean up any triple+ newlines we may have introduced
+    cleanChart = cleanChart.replace(/\n{3,}/g, '\n\n');
+
     return cleanChart;
 }
 
