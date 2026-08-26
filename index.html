@@ -468,7 +468,10 @@
           theme: isDark ? 'dark' : 'default',
           securityLevel: 'loose',
           fontFamily: 'Inter, sans-serif',
-          htmlLabels: false
+          flowchart: {
+            defaultRenderer: 'elk',
+            htmlLabels: false
+          }
         });
       }
       setupMermaid();
