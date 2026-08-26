@@ -2900,16 +2900,11 @@ export async function fixMermaidDiagram(brokenCode: string, errorMessage: string
     // Updated 2026-08-06 per https://ai.google.dev/gemini-api/docs/models
     // All models below are free-tier. Ordered by speed/cost (fastest first for healing).
     const MODEL_FALLBACK_CHAIN = [
+        'gemini-2.5-flash',          // Fast 2.5 Flash
+        'gemini-3.5-flash-lite',     // Fast Flash-Lite
         'gemini-3.7-flash',          // Gemini 3.7 Flash
-        'gemini-3.6-flash',          // Gemini 3.6 Flash
-        'gemini-3.5-flash-lite',     // Gemini 3.5 Flash-Lite
-        'gemini-flash-lite-latest',  // Flash-Lite alias
         'gemini-flash-latest',       // Flash alias
         'gemini-2.5-flash-lite',     // 2.5 Flash-Lite
-        'gemini-2.5-flash',          // 2.5 Flash
-        'gemini-1.5-flash',          // 1.5 Flash
-        'gemini-2.5-pro',            // 2.5 Pro
-        'gemini-1.5-pro',            // 1.5 Pro
     ];
     
     // Try each model in the chain — return first successful fix

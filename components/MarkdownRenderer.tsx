@@ -312,9 +312,13 @@ const SmartImage: React.FC<{ src?: string; alt?: string; onOpenImageModal?: (url
     if (status === 'error') {
         return (
             <span className="block my-4">
-                <div className="max-w-full h-32 flex flex-col items-center justify-center bg-muted/40 rounded-lg border border-border/50 text-center p-4">
-                    <p className="text-xs text-muted-foreground font-medium mb-1">Image preview unavailable</p>
-                    {alt && <p className="text-xs text-muted-foreground/70 truncate max-w-full mb-2">{alt}</p>}
+                <div className="max-w-full flex flex-col items-center justify-center bg-muted/30 rounded-xl border border-border/60 p-4 text-center">
+                    <div className="w-10 h-10 rounded-full bg-secondary/80 flex items-center justify-center mb-2">
+                        <svg className="w-5 h-5 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                    </div>
+                    {alt && <p className="text-xs font-medium text-foreground/80 max-w-md mb-2 line-clamp-2">{alt}</p>}
                     <button
                         onClick={() => {
                             setStatus('loading');
@@ -323,12 +327,11 @@ const SmartImage: React.FC<{ src?: string; alt?: string; onOpenImageModal?: (url
                             proxyIndexRef.current = -1;
                             setCurrentSrc(src!);
                         }}
-                        className="text-xs font-semibold px-2.5 py-1 bg-secondary hover:bg-accent rounded-md transition-colors"
+                        className="text-xs font-semibold px-3 py-1.5 bg-primary/10 hover:bg-primary/20 text-primary rounded-lg transition-colors"
                     >
-                        Retry Loading Image
+                        Reload Image
                     </button>
                 </div>
-                {alt && <span className="block text-center text-xs text-muted-foreground mt-1.5">{alt}</span>}
             </span>
         );
     }
@@ -526,7 +529,7 @@ export const Mermaid: React.FC<MermaidProps> = ({ chart, onOpenModal, viewOnly, 
                 let aiErrorMsg = lastErrorMsg;
                 let aiRound = 0;
                 let aiConsecutiveFailures = 0;
-                const MAX_AI_ROUNDS = 10;
+                const MAX_AI_ROUNDS = 3;
                 
                 while (aiRound < MAX_AI_ROUNDS) {
                     aiRound++;
@@ -535,11 +538,10 @@ export const Mermaid: React.FC<MermaidProps> = ({ chart, onOpenModal, viewOnly, 
                         aiFixedCode = await fixMermaidDiagram(codeToFix, aiErrorMsg);
                         
                         if (!aiFixedCode) {
-                            console.warn(`[Mermaid] Auto AI healing round ${aiRound}: no fix returned, retrying...`);
+                            console.warn(`[Mermaid] Auto AI healing round ${aiRound}: no fix returned`);
                             aiConsecutiveFailures++;
                             
-                            // After 3 consecutive failures, try stripStylingForRecovery
-                            if (aiConsecutiveFailures >= 3) {
+                            if (aiConsecutiveFailures >= 2) {
                                 const strippedCode = stripStylingForRecovery(activeChartCode);
                                 try {
                                     const result = await mermaid.render(`${renderId}-stripped-${aiRound}`, strippedCode);
@@ -552,11 +554,8 @@ export const Mermaid: React.FC<MermaidProps> = ({ chart, onOpenModal, viewOnly, 
                                 } catch (stripErr: any) {
                                     console.warn("[Mermaid] Auto stripStylingForRecovery also failed");
                                 }
-                                // All fallbacks failed — show error and stop
                                 break;
                             }
-                            
-                            await new Promise(r => setTimeout(r, 2000));
                             continue;
                         }
                         

@@ -2,6 +2,18 @@ export function sanitizeMermaidCode(rawChartCode: string): string {
     if (!rawChartCode || rawChartCode.trim() === '') return '';
 
     let cleanChart = rawChartCode.trim();
+
+    // ═══════════════════════════════════════════════════════════
+    // PHASE -1: FRONTMATTER & DIRECTIVE SANITIZATION
+    // ═══════════════════════════════════════════════════════════
+    // Fix unescaped or un-fenced frontmatter (e.g., config: flowchart: defaultRenderer: elk layout: elk)
+    cleanChart = cleanChart.replace(/^(?:config:\s*flowchart:.*?\n|layout:\s*elk\s*\n)+/gim, (match) => {
+        if (match.toLowerCase().includes('elk')) {
+            return `%%\x7Binit: \x7B"flowchart": \x7B"defaultRenderer": "elk"\x7D\x7D\x7D%%\n`;
+        }
+        return '';
+    });
+    cleanChart = cleanChart.replace(/^config:\s*flowchart:\s*defaultRenderer:\s*([a-z]+)\s+layout:\s*([a-z]+)/gim, '%%\x7Binit: \x7B"flowchart": \x7B"defaultRenderer": "$1"\x7D\x7D\x7D%%');
     
     // ═══════════════════════════════════════════════════════════
     // PHASE 0: GLOBAL FIXES (applied to ALL diagram types)

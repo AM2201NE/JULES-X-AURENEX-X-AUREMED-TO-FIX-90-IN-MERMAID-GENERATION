@@ -3283,7 +3283,12 @@ function pcmDataArraysToWavBlob(pcmArrays: Uint8Array[], sampleRate: number = 24
             searchScope={searchScope}
             setSearchScope={setSearchScope}
             onFormSubmit={handleSendMessage}
-            onStop={() => { abortControllerRef.current?.abort(); }}
+            onStop={() => {
+                if (abortControllerRef.current) {
+                    abortControllerRef.current.abort();
+                }
+                setIsLoading(false);
+            }}
             onFileSelect={handleFileSelect}
             onMicClick={() => { /* ... mic logic ... */ }}
             onRemoveAttachment={(id) => setPendingAttachments(prev => prev.filter(a => a.id !== id))}
