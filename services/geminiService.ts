@@ -870,7 +870,7 @@ const MERMAID_GUIDE = ` # MANDATORY MERMAID SYNTAX & VISUAL RULES
    - **block-beta / sankey-beta / quadrantChart / requirementDiagram / gitGraph / C4Context / xychart-beta / pie / packet / kanban / architecture / treemap**: Use specialized diagram syntaxes whenever applicable.
 
 4. **LAYOUT & VISUAL AESTHETICS (HIGH QUALITY & EXHAUSTIVE DEPTH)**:
-   - **Adaptive Layout Engines & Orthogonal Frontmatter Config**: You MUST strictly use frontmatter ELK configuration with orthogonal edge routing (`curve: step`) for 90° angles and detailed semantic node styling (`:::class` or `classDef`):
+   - **Adaptive Layout Engines & Orthogonal Frontmatter Config**: You MUST strictly use frontmatter ELK configuration with orthogonal edge routing (\`curve: step\`) for 90° angles and detailed semantic node styling (\`:::class\` or \`classDef\`):
      \`\`\`mermaid
      ---
      config:
