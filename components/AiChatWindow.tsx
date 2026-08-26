@@ -2972,17 +2972,34 @@ const AiChatWindow: React.FC<AiChatWindowProps> = ({ onClose, navigateToPage, na
 
         const now = Date.now();
         if ((update.type !== 'text_chunk' && update.type !== 'chunk') || now - lastUpdateTime > 100) {
-            const finalMessages = [...newMessages, currentMsg];
-            setMessages(finalMessages);
+            setMessages(prev => {
+                const idx = prev.findIndex(m => m.id === botMsgId);
+                if (idx !== -1) {
+                    const next = [...prev];
+                    next[idx] = { ...currentMsg };
+                    return next;
+                }
+                return [...prev, currentMsg];
+            });
             lastUpdateTime = now;
         }
       }
 
-      const finalMessages = [...newMessages, currentMsg];
-      setMessages(finalMessages);
-      const finalSession = { ...updatedSession, messages: finalMessages };
-      setSessions(prev => prev.map(s => s.id === activeSessionId ? finalSession : s));
-      dataService.saveChatSession(finalSession);
+      currentMsg.isProcessing = false;
+      setMessages(prev => {
+          const idx = prev.findIndex(m => m.id === botMsgId);
+          let updatedMsgs: ChatMessage[];
+          if (idx !== -1) {
+              updatedMsgs = [...prev];
+              updatedMsgs[idx] = { ...currentMsg };
+          } else {
+              updatedMsgs = [...prev, currentMsg];
+          }
+          const finalSession = { ...updatedSession, messages: updatedMsgs };
+          setSessions(sPrev => sPrev.map(s => s.id === activeSessionId ? finalSession : s));
+          dataService.saveChatSession(finalSession);
+          return updatedMsgs;
+      });
     } catch (e) {
       const errorMsg = { ...initialBotMsg, text: "An error occurred.", isProcessing: false };
       setMessages([...newMessages, errorMsg]);
