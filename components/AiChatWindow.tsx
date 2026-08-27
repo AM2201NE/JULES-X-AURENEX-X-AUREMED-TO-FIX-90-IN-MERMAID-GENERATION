@@ -2563,20 +2563,25 @@ const AiChatWindow: React.FC<AiChatWindowProps> = ({ onClose, navigateToPage, na
   useEffect(() => {
     const loaded = dataService.getChatSessions();
     setSessions(loaded);
-    if (loaded.length > 0 && !activeSessionId) setActiveSessionId(loaded[0].id);
-    else if (loaded.length === 0) handleNewChat();
+    let targetSessionId = activeSessionId;
+    if (loaded.length > 0 && !targetSessionId) {
+      targetSessionId = loaded[0].id;
+      setActiveSessionId(targetSessionId);
+    } else if (loaded.length === 0) {
+      handleNewChat();
+      return;
+    }
+
+    const initialSession = loaded.find(s => s.id === targetSessionId) || loaded[0];
+    if (initialSession && initialSession.messages) {
+      setMessages(initialSession.messages);
+    }
 
     const user = dataService.getUser();
     if (user?.aiPersonality) setCurrentPersonality(user.aiPersonality);
   }, []);
 
   const activeSession = useMemo(() => sessions.find(s => s.id === activeSessionId), [sessions, activeSessionId]);
-
-  useEffect(() => {
-    if (activeSession) {
-      setMessages(activeSession.messages);
-    }
-  }, [activeSessionId, activeSession]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -2652,7 +2657,7 @@ const AiChatWindow: React.FC<AiChatWindowProps> = ({ onClose, navigateToPage, na
     const session = sessions.find(s => s.id === sessionId);
     if (session) {
       setActiveSessionId(sessionId);
-      setMessages(session.messages);
+      setMessages([...session.messages]);
       setCitationPanelMessage(null);
       if (isMobile) setIsSidebarOpen(false);
     }
@@ -2984,7 +2989,7 @@ const AiChatWindow: React.FC<AiChatWindowProps> = ({ onClose, navigateToPage, na
           return finalMsgs;
       });
       const finalSession = { ...updatedSession, messages: finalMsgs };
-      setSessions(sPrev => sPrev.map(s => s.id === activeSessionId ? finalSession : s));
+      setSessions(sPrev => sPrev.map(s => s.id === (activeSessionId || updatedSession.id) ? finalSession : s));
       dataService.saveChatSession(finalSession);
     } catch (e) {
       const errorMsg = { ...initialBotMsg, text: "An error occurred.", isProcessing: false };
