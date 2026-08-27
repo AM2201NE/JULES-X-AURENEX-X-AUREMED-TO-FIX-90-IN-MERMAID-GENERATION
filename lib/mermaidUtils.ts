@@ -1,7 +1,51 @@
+export function protectMath(code: string): { code: string; restore: (codeToRestore: string) => string } {
+    const protectedParts: string[] = [];
+    const protectedCode = code.replace(/(\$\$[\s\S]*?\$\$|\\\(.*?\\\))/g, (match) => {
+        const id = `__AURENEX_MATH_${protectedParts.length}__`;
+        protectedParts.push(match);
+        return id;
+    });
+
+    return {
+        code: protectedCode,
+        restore(codeToRestore: string): string {
+            return codeToRestore.replace(/__AURENEX_MATH_(\d+)__/g, (_, i) => protectedParts[Number(i)] || '');
+        }
+    };
+}
+
+export interface MermaidStructuralValidation {
+    valid: boolean;
+    errors: string[];
+}
+
+export function validateMermaidStructure(code: string): MermaidStructuralValidation {
+    const errors: string[] = [];
+    if (!code || code.trim() === '') return { valid: false, errors: ['Empty code'] };
+
+    const definedIds = new Set<string>();
+    const nodeDefRegex = /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*(?:\[|\(|\{|\{\{|\[\[|\[\(|\(\()/gm;
+    let match: RegExpExecArray | null;
+    while ((match = nodeDefRegex.exec(code)) !== null) {
+        definedIds.add(match[1]);
+    }
+
+    const edgeRegex = /([A-Za-z_][A-Za-z0-9_]*)\s*(?:-->|==>|-\.->|--)\s*(?:\|[^|]*\|)?\s*([A-Za-z_][A-Za-z0-9_]*)/g;
+    while ((match = edgeRegex.exec(code)) !== null) {
+        const src = match[1];
+        const tgt = match[2];
+        if (!definedIds.has(src)) definedIds.add(src);
+        if (!definedIds.has(tgt)) definedIds.add(tgt);
+    }
+
+    return { valid: errors.length === 0, errors };
+}
+
 export function sanitizeMermaidCode(rawChartCode: string): string {
     if (!rawChartCode || rawChartCode.trim() === '') return '';
 
-    let cleanChart = rawChartCode.trim();
+    const mathProtected = protectMath(rawChartCode.trim());
+    let cleanChart = mathProtected.code;
 
     // ═══════════════════════════════════════════════════════════
     // PHASE -1: FRONTMATTER & DIRECTIVE SANITIZATION
@@ -330,7 +374,7 @@ export function sanitizeMermaidCode(rawChartCode: string): string {
     // Clean up any triple+ newlines we may have introduced
     cleanChart = cleanChart.replace(/\n{3,}/g, '\n\n');
 
-    return cleanChart;
+    return mathProtected.restore(cleanChart);
 }
 
 /**
@@ -593,6 +637,208 @@ export function quickFixMermaid(code: string, errorMessage: string): string | nu
     fixed = fixed.replace(/\n{3,}/g, '\n\n');
     
     return changed ? fixed.trim() : null;
+}
+
+// ═══════════════════════════════════════════════════════════
+// IMMUTABLE AURENEX MERMAID COLOR PALETTE
+// ═══════════════════════════════════════════════════════════
+export const AURENEX_MERMAID_COLORS = Object.freeze({
+    organ: { fill: '#e8f5e9', stroke: '#2e7d32', color: '#1b5e20' },
+    artery: { fill: '#ffebee', stroke: '#c62828', color: '#b71c1c' },
+    vein: { fill: '#e3f2fd', stroke: '#1565c0', color: '#0d47a1' },
+    nerve: { fill: '#fffde7', stroke: '#fbc02d', color: '#f57f17' },
+    pathology: { fill: '#f3e5f5', stroke: '#7b1fa2', color: '#4a148c' },
+    primary: { fill: '#1976d2', stroke: '#0d47a1', color: '#ffffff' },
+    secondary: { fill: '#e8f5e9', stroke: '#2e7d32', color: '#000000' },
+    success: { fill: '#2e7d32', stroke: '#1b5e20', color: '#ffffff' },
+    warning: { fill: '#fbc02d', stroke: '#f57f17', color: '#000000' },
+    critical: { fill: '#c62828', stroke: '#b71c1c', color: '#ffffff' },
+});
+
+export function buildAurenexClassDefs(): string {
+    return Object.entries(AURENEX_MERMAID_COLORS)
+        .map(([name, c]) => `    classDef ${name} fill:${c.fill},stroke:${c.stroke},color:${c.color}`)
+        .join('\n');
+}
+
+export const MERMAID_DIAGRAM_TYPES = [
+    'flowchart',
+    'graph',
+    'sequenceDiagram',
+    'classDiagram',
+    'stateDiagram',
+    'stateDiagram-v2',
+    'erDiagram',
+    'journey',
+    'gantt',
+    'pie',
+    'quadrantChart',
+    'requirementDiagram',
+    'gitGraph',
+    'C4Context',
+    'C4Container',
+    'C4Component',
+    'C4Dynamic',
+    'C4Deployment',
+    'mindmap',
+    'timeline',
+    'zenuml',
+    'sankey',
+    'sankey-beta',
+    'xychart',
+    'xychart-beta',
+    'block',
+    'block-beta',
+    'architecture-beta',
+    'kanban',
+    'packet-beta',
+    'radar-beta',
+    'treemap-beta',
+    'venn-beta',
+    'ishikawa-beta',
+    'wardley-beta',
+    'cynefin-beta',
+    'swimlane-beta',
+    'treeView-beta',
+    'eventmodeling',
+];
+
+// ═══════════════════════════════════════════════════════════
+// DIAGRAM INTERMEDIATE REPRESENTATION (Diagram IR) & COMPILER
+// ═══════════════════════════════════════════════════════════
+export interface DiagramNode {
+    id: string;
+    label: string;
+    type?: string;
+    groupId?: string;
+    className?: string;
+    importance?: number;
+    math?: string;
+}
+
+export interface DiagramEdge {
+    id?: string;
+    source: string;
+    target: string;
+    label?: string;
+    relationship?: 'solid' | 'dotted' | 'thick' | 'multi';
+    style?: string;
+}
+
+export interface DiagramGroup {
+    id: string;
+    label: string;
+}
+
+export interface DiagramStyle {
+    className: string;
+    fill: string;
+    stroke: string;
+    color: string;
+}
+
+export interface DiagramIR {
+    diagramType: string;
+    title?: string;
+    direction?: 'TB' | 'TD' | 'BT' | 'LR' | 'RL';
+    nodes: DiagramNode[];
+    edges: DiagramEdge[];
+    groups?: DiagramGroup[];
+    styles?: DiagramStyle[];
+    metadata?: Record<string, any>;
+}
+
+export function compileDiagramIR(ir: DiagramIR): string {
+    const lines: string[] = [];
+    const type = ir.diagramType || 'flowchart';
+    const dir = ir.direction || 'TB';
+
+    if (type === 'flowchart' || type === 'graph') {
+        lines.push('---');
+        lines.push('config:');
+        lines.push('  layout: elk');
+        lines.push('  elk:');
+        lines.push('    mergeEdges: true');
+        lines.push('  flowchart:');
+        lines.push('    defaultRenderer: elk');
+        lines.push('    curve: step');
+        lines.push('---');
+        lines.push(`flowchart ${dir}`);
+        lines.push(buildAurenexClassDefs());
+
+        const groups = ir.groups || [];
+        const groupMap = new Map<string, DiagramNode[]>();
+        const ungroupedNodes: DiagramNode[] = [];
+
+        for (const node of ir.nodes) {
+            if (node.groupId) {
+                if (!groupMap.has(node.groupId)) groupMap.set(node.groupId, []);
+                groupMap.get(node.groupId)!.push(node);
+            } else {
+                ungroupedNodes.push(node);
+            }
+        }
+
+        for (const group of groups) {
+            lines.push(`subgraph ${group.id} ["${group.label.replace(/"/g, '&quot;')}"]`);
+            const groupNodes = groupMap.get(group.id) || [];
+            for (const node of groupNodes) {
+                lines.push(`    ${formatNodeLine(node)}`);
+            }
+            lines.push('end');
+        }
+
+        for (const node of ungroupedNodes) {
+            lines.push(formatNodeLine(node));
+        }
+
+        for (const edge of ir.edges) {
+            lines.push(formatEdgeLine(edge));
+        }
+
+        for (const node of ir.nodes) {
+            if (node.className) {
+                lines.push(`${node.id}:::${node.className}`);
+            }
+        }
+    } else {
+        lines.push(`${type}`);
+        for (const node of ir.nodes) {
+            lines.push(`${node.id}["${node.label}"]`);
+        }
+        for (const edge of ir.edges) {
+            lines.push(`${edge.source} --> ${edge.target}`);
+        }
+    }
+
+    return lines.join('\n');
+}
+
+function formatNodeLine(node: DiagramNode): string {
+    const safeLabel = node.label.replace(/"/g, '&quot;');
+    switch (node.type) {
+        case 'round': return `${node.id}("${safeLabel}")`;
+        case 'stadium': return `${node.id}(["${safeLabel}"])`;
+        case 'subroutine': return `${node.id}[["${safeLabel}"]]`;
+        case 'database': return `${node.id}[("${safeLabel}")]`;
+        case 'circle': return `${node.id}(("${safeLabel}"))`;
+        case 'rhombus': return `${node.id}{"${safeLabel}"}`;
+        default: return `${node.id}["${safeLabel}"]`;
+    }
+}
+
+function formatEdgeLine(edge: DiagramEdge): string {
+    const label = edge.label ? `-- "${edge.label.replace(/"/g, '&quot;')}" -->` : '-->';
+    switch (edge.relationship) {
+        case 'dotted':
+            return edge.label ? `${edge.source} -. "${edge.label.replace(/"/g, '&quot;')}" .-> ${edge.target}` : `${edge.source} -.-> ${edge.target}`;
+        case 'thick':
+            return edge.label ? `${edge.source} == "${edge.label.replace(/"/g, '&quot;')}" ==> ${edge.target}` : `${edge.source} ==> ${edge.target}`;
+        case 'multi':
+            return `${edge.source} <--> ${edge.target}`;
+        default:
+            return `${edge.source} ${label} ${edge.target}`;
+    }
 }
 
 // ═══════════════════════════════════════════════════════════

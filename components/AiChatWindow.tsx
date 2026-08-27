@@ -520,10 +520,17 @@ const MermaidModal: React.FC<MermaidModalProps> = ({ chart, onClose }) => {
           mermaid.initialize({
             startOnLoad: false,
             theme: document.documentElement.classList.contains('dark') ? 'dark' : 'default',
-            securityLevel: 'loose',
+            securityLevel: 'strict',
             fontFamily: 'Inter, sans-serif',
+            look: 'classic',
             flowchart: {
+              defaultRenderer: 'elk',
+              curve: 'step',
               htmlLabels: false,
+              nodeSpacing: 35,
+              rankSpacing: 55,
+              padding: 12,
+              useMaxWidth: true,
             },
           });
         } catch (initErr) {}

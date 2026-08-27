@@ -2575,7 +2575,7 @@ return;
                             continue;
                         }
                         // If second error is quota, try next model
-                        if (isQuotaError(secondError)) {
+                        if (isQuotaOrDemandError(secondError)) {
                             console.warn(`Quota exceeded on ${currentModel} without tools, trying next model`);
                             yield { type: 'tool_start', payload: { toolName: `Quota exceeded on ${currentModel}. Trying next model...` } };
                             currentModelIndex++;
@@ -2804,7 +2804,7 @@ return;
                         }
                         
                         // Check if this is a quota error
-                        if (isQuotaError(contErr)) {
+                        if (isQuotaOrDemandError(contErr)) {
                             let waitTime = 30000; // Wait 30 sec for quota reset (free tier RPM resets in 60s)
                             yield { type: 'tool_start', payload: { toolName: 'API Quota limit reached. Pausing for 30 seconds to cool down...' } };
                             console.warn("API Quota limit reached during auto-continue. Pausing 30s...");
@@ -2938,7 +2938,7 @@ CRITICAL SYNTAX RULES (Mermaid 11.x):
 2. DO NOT split labels across multiple quotes ("Part1" "Part2"). Use a single pair of quotes ("Part1 Part2").
 3. KEEP node definitions on a single line. Use <br/> for line breaks inside text.
 4. Escape internal double quotes with &quot;.
-5. Hex colors in classDef MUST be wrapped in double quotes: classDef myClass fill:"#ffebee",stroke:"#c62828",color:"#000000".
+5. Hex colors in classDef and style MUST use canonical unquoted Mermaid syntax: classDef myClass fill:#ffebee,stroke:#c62828,color:#000000 (DO NOT use quotes around hex values!).
 6. classDef and class assignments MUST be placed OUTSIDE subgraphs.
 7. direction MUST be on its own line.
 8. Edge labels MUST use pipe syntax: A -->|"label"| B.

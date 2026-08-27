@@ -15,27 +15,42 @@ let loadedMermaid: any = null;
 
 async function getMermaidInstance() {
     if (loadedMermaid) return loadedMermaid;
+
+    let mermaidApi: any = null;
     if (typeof window !== 'undefined' && (window as any).mermaid) {
-        loadedMermaid = (window as any).mermaid;
-        loadedMermaid.initialize({
-            startOnLoad: false,
-            theme: document.documentElement.classList.contains('dark') ? 'dark' : 'default',
-            securityLevel: 'loose',
-            fontFamily: 'Inter, sans-serif',
-            flowchart: { defaultRenderer: 'dagre' },
-        });
-        return loadedMermaid;
+        mermaidApi = (window as any).mermaid;
+    } else {
+        const mermaidModule = await import('mermaid');
+        mermaidApi = mermaidModule.default ?? mermaidModule;
     }
-    // Fallback: dynamically import npm mermaid if CDN isn't loaded
-    const mermaidModule = await import('mermaid');
-    loadedMermaid = mermaidModule.default ?? mermaidModule;
-    loadedMermaid.initialize({
+
+    try {
+        const elkLayoutModule = await import('@mermaid-js/layout-elk');
+        if (elkLayoutModule && mermaidApi.registerLayoutLoaders) {
+            mermaidApi.registerLayoutLoaders(elkLayoutModule.default ?? elkLayoutModule);
+        }
+    } catch (e) {
+        console.warn("[Mermaid] Could not register ELK layout loader:", e);
+    }
+
+    mermaidApi.initialize({
         startOnLoad: false,
         theme: document.documentElement.classList.contains('dark') ? 'dark' : 'default',
-        securityLevel: 'loose',
+        securityLevel: 'strict',
         fontFamily: 'Inter, sans-serif',
-        flowchart: { defaultRenderer: 'dagre' },
+        look: 'classic',
+        flowchart: {
+            defaultRenderer: 'elk',
+            curve: 'step',
+            htmlLabels: false,
+            nodeSpacing: 35,
+            rankSpacing: 55,
+            padding: 12,
+            useMaxWidth: true,
+        },
     });
+
+    loadedMermaid = mermaidApi;
     return loadedMermaid;
 }
 
