@@ -26,7 +26,11 @@ export default defineConfig(({ mode }) => {
       resolve: {
         alias: {
           '@': path.resolve(__dirname, '.'),
+          '@mermaid-js/layout-elk': path.resolve(__dirname, 'node_modules/@mermaid-js/layout-elk/dist/mermaid-layout-elk.core.mjs'),
         }
+      },
+      optimizeDeps: {
+        include: ['@mermaid-js/layout-elk', 'mermaid']
       }
     };
 });
