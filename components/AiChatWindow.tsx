@@ -2570,13 +2570,13 @@ const AiChatWindow: React.FC<AiChatWindowProps> = ({ onClose, navigateToPage, na
     if (user?.aiPersonality) setCurrentPersonality(user.aiPersonality);
   }, []);
 
-  const activeSession = sessions.find(s => s.id === activeSessionId);
+  const activeSession = useMemo(() => sessions.find(s => s.id === activeSessionId), [sessions, activeSessionId]);
 
   useEffect(() => {
     if (activeSession) {
       setMessages(activeSession.messages);
     }
-  }, [activeSession?.id]);
+  }, [activeSessionId, activeSession]);
 
   useEffect(() => {
     if (scrollRef.current) {
