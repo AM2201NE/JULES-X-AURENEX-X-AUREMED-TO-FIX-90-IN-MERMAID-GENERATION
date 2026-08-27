@@ -7,6 +7,7 @@ import { PlusIcon, XIcon, SendIcon, AiLogoIcon, NotionIcon, FileIcon, ExternalLi
 import { v4 as uuidv4 } from 'uuid';
 import ImageOverlay from './ImageOverlay';
 import MarkdownRenderer, { getMermaidErrorMessage } from './MarkdownRenderer';
+import { getMermaid } from '../lib/mermaid/mermaidRuntime';
 import ErrorBoundary from './ErrorBoundary';
 import { notionService, fetchWithRetry } from '../services/notionService';
 import AnkiCardPreview from './AnkiCardPreview';
@@ -512,28 +513,7 @@ const MermaidModal: React.FC<MermaidModalProps> = ({ chart, onClose }) => {
       }
       
       const renderModalChart = async () => {
-        const mermaid = (window as any).mermaid;
-        if (!mermaid) return;
-
-        // Ensure theme initialization matches preview
-        try {
-          mermaid.initialize({
-            startOnLoad: false,
-            theme: document.documentElement.classList.contains('dark') ? 'dark' : 'default',
-            securityLevel: 'strict',
-            fontFamily: 'Inter, sans-serif',
-            look: 'classic',
-            flowchart: {
-              defaultRenderer: 'elk',
-              curve: 'step',
-              htmlLabels: false,
-              nodeSpacing: 35,
-              rankSpacing: 55,
-              padding: 12,
-              useMaxWidth: true,
-            },
-          });
-        } catch (initErr) {}
+        const mermaid = getMermaid();
 
         const renderId = `mermaid-modal-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`;
 
@@ -2992,20 +2972,20 @@ const AiChatWindow: React.FC<AiChatWindowProps> = ({ onClose, navigateToPage, na
       }
 
       currentMsg.isProcessing = false;
+      let finalMsgs: ChatMessage[] = [];
       setMessages(prev => {
           const idx = prev.findIndex(m => m.id === botMsgId);
-          let updatedMsgs: ChatMessage[];
           if (idx !== -1) {
-              updatedMsgs = [...prev];
-              updatedMsgs[idx] = { ...currentMsg };
+              finalMsgs = [...prev];
+              finalMsgs[idx] = { ...currentMsg };
           } else {
-              updatedMsgs = [...prev, currentMsg];
+              finalMsgs = [...prev, currentMsg];
           }
-          const finalSession = { ...updatedSession, messages: updatedMsgs };
-          setSessions(sPrev => sPrev.map(s => s.id === activeSessionId ? finalSession : s));
-          dataService.saveChatSession(finalSession);
-          return updatedMsgs;
+          return finalMsgs;
       });
+      const finalSession = { ...updatedSession, messages: finalMsgs };
+      setSessions(sPrev => sPrev.map(s => s.id === activeSessionId ? finalSession : s));
+      dataService.saveChatSession(finalSession);
     } catch (e) {
       const errorMsg = { ...initialBotMsg, text: "An error occurred.", isProcessing: false };
       setMessages([...newMessages, errorMsg]);

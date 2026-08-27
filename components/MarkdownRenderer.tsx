@@ -9,49 +9,11 @@ import rehypeRaw from 'rehype-raw';
 import 'katex/dist/katex.min.css';
 
 import { sanitizeMermaidCode, quickFixMermaid, getCachedHealedMermaid, setCachedHealedMermaid } from '../lib/mermaidUtils';
+import { getMermaid } from '../lib/mermaid/mermaidRuntime';
 import { fixMermaidDiagram } from '../services/geminiService';
 
-let loadedMermaid: any = null;
-
 async function getMermaidInstance() {
-    if (loadedMermaid) return loadedMermaid;
-
-    let mermaidApi: any = null;
-    if (typeof window !== 'undefined' && (window as any).mermaid) {
-        mermaidApi = (window as any).mermaid;
-    } else {
-        const mermaidModule = await import('mermaid');
-        mermaidApi = mermaidModule.default ?? mermaidModule;
-    }
-
-    try {
-        const elkLayoutModule = await import('@mermaid-js/layout-elk');
-        if (elkLayoutModule && mermaidApi.registerLayoutLoaders) {
-            mermaidApi.registerLayoutLoaders(elkLayoutModule.default ?? elkLayoutModule);
-        }
-    } catch (e) {
-        console.warn("[Mermaid] Could not register ELK layout loader:", e);
-    }
-
-    mermaidApi.initialize({
-        startOnLoad: false,
-        theme: document.documentElement.classList.contains('dark') ? 'dark' : 'default',
-        securityLevel: 'strict',
-        fontFamily: 'Inter, sans-serif',
-        look: 'classic',
-        flowchart: {
-            defaultRenderer: 'elk',
-            curve: 'step',
-            htmlLabels: false,
-            nodeSpacing: 35,
-            rankSpacing: 55,
-            padding: 12,
-            useMaxWidth: true,
-        },
-    });
-
-    loadedMermaid = mermaidApi;
-    return loadedMermaid;
+    return getMermaid();
 }
 
 // Multiple CORS proxy fallbacks — tried in order until one works
