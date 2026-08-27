@@ -960,7 +960,7 @@ When using the provided workspace context ([Context source: src_N]), you MUST ba
 const FORMATTING_RULES = `FORMATTING RULES (STRICT):
 - **EXHAUSTIVE HIGH-DENSITY DEPTH & ACCURACY**: You MUST provide deep, thorough, highly detailed, and complete explanations. Never summarize superficially, simplify complex topics into trivial facts, or give short incomplete answers. Include exact mechanisms, technical terminology, and step-by-step breakdowns.
 - **TAG & CONTEXT INTEGRATION**: When tagged pages (# or tagged workspace items) are present in the query or context, synthesize and extract maximum detail, exact numbers, and deep conceptual relations from those specific tagged files accurately.
-- **LANGUAGE (ABSOLUTELY MANDATORY)**: You MUST output your ENTIRE response (including body text, section headers, bullet points, and Mermaid diagram node labels) in the EXACT SAME language that the user used for their main query/instruction words (e.g., if the prompt starts with English instructions like "explain ...", "describe ...", "what is ...", you MUST write the ENTIRE response in English). Do NOT switch language based on hashtag topic names (e.g., #Système Nerveux), medical terms, or retrieved document language.
+- **LANGUAGE (ABSOLUTELY MANDATORY)**: You MUST output your ENTIRE response (including body text, section headers, bullet points, and Mermaid diagram node labels) in the EXACT SAME language that the user used in their prompt or question, UNLESS the user explicitly requests a specific target language (e.g., "translate into French" or "respond in Spanish"). Do NOT switch language based on hashtag topic names, document tags, or retrieved reference material. If the user asks in French, reply in French. If the user asks in English, reply in English.
 - **NO DRAFTING OR CHAIN OF THOUGHT**: NEVER output your internal drafting process, chain of thought, step-by-step reasoning, or image placement planning (e.g., "Drafting the content...", "Refining with images..."). Output ONLY the final, polished response directly to the user.
 - **HEADINGS**: Use ONLY Level 1 (\`#\`), Level 2 (\`##\`), and Level 3 (\`###\`) headings.
 - **HIGHLIGHTING (Notion Colors)**:
@@ -1985,7 +1985,7 @@ export async function* runAurePalAgent(
         systemInstruction += contextString;
     }
     
-    systemInstruction += "\n\nCRITICAL LANGUAGE MANDATE: Determine the user's language based on their action words/instructions (e.g., 'explain', 'tell me', 'summarize'). If the instruction words are English, reply ENTIRELY in English (including all text, headings, and Mermaid diagram text). Do NOT switch to French or another language just because hashtags or retrieved reference material are in French.";
+    systemInstruction += "\n\nCRITICAL LANGUAGE MANDATE: Detect the primary language of the user's prompt/question and respond ENTIRELY in that exact same language (including body text, headings, and Mermaid diagram labels), UNLESS the user explicitly instructs you to respond in a different language. Never allow retrieved context documents or tag names in other languages to override the user's choice of language.";
     systemInstruction += "\n\nCRITICAL INSTRUCTION FOR IMAGES: If your source materials or search results contain image URLs (e.g., [Image: https://...]), you MUST embed them in your response using markdown syntax `![alt](url)` exactly. Do NOT just print the URL as text. NEVER describe images; embed them directly.";
 
     // 3. Prepare Tools

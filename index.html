@@ -355,12 +355,27 @@
           font-weight: 600 !important;
       }
 
-      /* Clean Mermaid Text - No Shadows, just polished font weights */
+      /* Clean Mermaid Text - High-contrast crisp text rendering across dark/light themes */
       .mermaid .label text,
       .mermaid .node text,
-      .mermaid .cluster-label text {
+      .mermaid .cluster-label text,
+      .mermaid tspan {
           font-weight: 600 !important;
-          text-shadow: none !important; /* Shadows completely removed */
+          text-shadow: none !important;
+      }
+
+      .dark .mermaid .node label,
+      .dark .mermaid .node text,
+      .dark .mermaid .node tspan {
+          fill: #f8fafc !important;
+          color: #f8fafc !important;
+      }
+
+      .mermaid .node label,
+      .mermaid .node text,
+      .mermaid .node tspan {
+          fill: #0f172a !important;
+          color: #0f172a !important;
       }
       
       /* Notion-style Highlight Classes */
