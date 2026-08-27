@@ -344,10 +344,20 @@
         fill: none !important;
       }
 
+      /* Canonical Edge Label Styling: White text + dark gray background */
+      .mermaid .edgeLabel,
+      .mermaid .edgeLabel rect,
+      .mermaid .edgeLabel span,
+      .mermaid .edgeLabel p {
+          background-color: #3f3f46 !important;
+          color: #ffffff !important;
+          border-radius: 4px !important;
+          font-weight: 600 !important;
+      }
+
       /* Clean Mermaid Text - No Shadows, just polished font weights */
       .mermaid .label text,
       .mermaid .node text,
-      .mermaid .edgeLabel,
       .mermaid .cluster-label text {
           font-weight: 600 !important;
           text-shadow: none !important; /* Shadows completely removed */
