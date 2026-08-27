@@ -7,6 +7,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import type { EnhancedEvidence } from '../types';
+import { renderVerifiedMermaid } from '../lib/mermaid/renderer';
 
 interface EvidencePanelProps {
   evidence: EnhancedEvidence[];
@@ -16,39 +17,16 @@ interface EvidencePanelProps {
 export const EvidencePanel: React.FC<EvidencePanelProps> = ({ evidence, onClose }) => {
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
   const mermaidRefs = useRef<Map<string, HTMLDivElement>>(new Map());
-  const [mermaidLoaded, setMermaidLoaded] = useState(false);
 
-  // Load mermaid dynamically
+  // Render mermaid diagrams
   useEffect(() => {
-    const loadMermaid = async () => {
-      try {
-        const mermaid = await import('mermaid');
-        mermaid.default.initialize({
-          startOnLoad: false,
-          theme: 'base',
-          flowchart: { defaultRenderer: 'elk' },
-          securityLevel: 'loose',
-        });
-        setMermaidLoaded(true);
-      } catch (error) {
-        console.warn('Mermaid failed to load:', error);
-      }
-    };
-    loadMermaid();
-  }, []);
-
-  // Render mermaid diagrams when loaded
-  useEffect(() => {
-    if (!mermaidLoaded) return;
-    
     const renderDiagrams = async () => {
-      const mermaid = (await import('mermaid')).default;
-      
       for (const [id, element] of mermaidRefs.current.entries()) {
         if (element && !element.dataset.rendered) {
           try {
             const code = element.dataset.mermaidCode || '';
-            await mermaid.render(`diagram-${id}`, code);
+            const res = await renderVerifiedMermaid(code, [`diagram-${id}`]);
+            element.innerHTML = res.svg;
             element.dataset.rendered = 'true';
           } catch (error) {
             console.warn(`Failed to render mermaid diagram ${id}:`, error);
@@ -59,7 +37,7 @@ export const EvidencePanel: React.FC<EvidencePanelProps> = ({ evidence, onClose 
     };
     
     renderDiagrams();
-  }, [mermaidLoaded, evidence]);
+  }, [evidence]);
 
   const toggleExpanded = (id: string) => {
     setExpandedItems(prev => {
@@ -132,10 +110,15 @@ export const EvidencePanel: React.FC<EvidencePanelProps> = ({ evidence, onClose 
   // Get authors short form
   const getAuthorsShort = (item: EnhancedEvidence): string => {
     const authors = item.metadata?.authors;
-    if (!authors || authors.length === 0) return '';
-    if (authors.length === 1) return authors[0];
-    if (authors.length === 2) return `${authors[0]}, ${authors[1]}`;
-    return `${authors[0]} et al.`;
+    if (!authors) return '';
+    if (typeof authors === 'string') return authors;
+    if (Array.isArray(authors)) {
+      if (authors.length === 0) return '';
+      if (authors.length === 1) return authors[0];
+      if (authors.length === 2) return `${authors[0]}, ${authors[1]}`;
+      return `${authors[0]} et al.`;
+    }
+    return '';
   };
 
   // Get evidence level badge based on study design
@@ -174,8 +157,8 @@ export const EvidencePanel: React.FC<EvidencePanelProps> = ({ evidence, onClose 
   }
 
   // Group evidence by type for better organization
-  const citations = evidence.filter(e => e.citationType !== 'diagram');
-  const diagrams = evidence.filter(e => e.citationType === 'diagram');
+  const citations = (Array.isArray(evidence) ? evidence : [evidence]).filter(e => e.citationType !== 'diagram');
+  const diagrams = (Array.isArray(evidence) ? evidence : [evidence]).filter(e => e.citationType === 'diagram');
 
   return (
     <div className="evidence-panel bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
@@ -435,14 +418,7 @@ export const EvidencePanel: React.FC<EvidencePanelProps> = ({ evidence, onClose 
                   className="mermaid-container bg-gray-50 dark:bg-gray-800 rounded p-4 min-h-[200px] border border-gray-200 dark:border-gray-700"
                   data-mermaid-code={item.snippet}
                 >
-                  {mermaidLoaded ? (
-                    <div className="mermaid-diagram">{item.snippet}</div>
-                  ) : (
-                    <div className="text-center text-gray-500 py-8">
-                      <div className="animate-spin inline-block w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full"></div>
-                      <p className="mt-2 text-sm">Loading diagram...</p>
-                    </div>
-                  )}
+                  <div className="mermaid-diagram">{item.snippet}</div>
                 </div>
 
                 {/* Code view toggle */}
