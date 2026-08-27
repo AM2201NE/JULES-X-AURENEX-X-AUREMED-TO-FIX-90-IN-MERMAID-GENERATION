@@ -8,7 +8,7 @@ import rehypeRaw from 'rehype-raw';
 // Import KaTeX CSS from npm to ensure version matches rehype-katex's bundled katex
 import 'katex/dist/katex.min.css';
 
-import { sanitizeMermaidCode, stripStylingForRecovery, quickFixMermaid, getCachedHealedMermaid, setCachedHealedMermaid } from '../lib/mermaidUtils';
+import { sanitizeMermaidCode, quickFixMermaid, getCachedHealedMermaid, setCachedHealedMermaid } from '../lib/mermaidUtils';
 import { fixMermaidDiagram } from '../services/geminiService';
 
 let loadedMermaid: any = null;
@@ -563,18 +563,6 @@ export const Mermaid: React.FC<MermaidProps> = ({ chart, onOpenModal, viewOnly, 
                             aiConsecutiveFailures++;
                             
                             if (aiConsecutiveFailures >= 2) {
-                                const strippedCode = stripStylingForRecovery(activeChartCode);
-                                try {
-                                    const result = await mermaid.render(`${renderId}-stripped-${aiRound}`, strippedCode);
-                                    setSvg(result.svg);
-                                    setError("⚠ Styling removed to show diagram structure");
-                                    setActiveChartCode(strippedCode);
-                                    lastRenderedCodeRef.current = strippedCode;
-                                    console.log("[Mermaid] Auto stripStylingForRecovery fallback succeeded");
-                                    return;
-                                } catch (stripErr: any) {
-                                    console.warn("[Mermaid] Auto stripStylingForRecovery also failed");
-                                }
                                 break;
                             }
                             continue;
@@ -620,35 +608,8 @@ export const Mermaid: React.FC<MermaidProps> = ({ chart, onOpenModal, viewOnly, 
                     }
                 }
                 
-                // AI healing exhausted — try stripStylingForRecovery as final fallback
-                const strippedCode = stripStylingForRecovery(activeChartCode);
-                try {
-                    const result = await mermaid.render(`${renderId}-stripped-final`, strippedCode);
-                    setSvg(result.svg);
-                    setError("⚠ Styling removed to show diagram structure");
-                    setActiveChartCode(strippedCode);
-                    lastRenderedCodeRef.current = strippedCode;
-                    console.log("[Mermaid] Auto stripStylingForRecovery final fallback succeeded");
-                    return;
-                } catch (stripErr: any) {
-                    console.warn("[Mermaid] Auto stripStylingForRecovery final fallback also failed");
-                }
-            }
-            
-            // All attempts including AI failed — try stripping styling as final fallback
-            if (!isProcessingRef.current) {
-                const strippedCode = stripStylingForRecovery(activeChartCode);
-                if (strippedCode !== activeChartCode) {
-                    try {
-                        const result = await mermaid.render(`${renderId}-stripped`, strippedCode);
-                        setSvg(result.svg);
-                        setError("⚠ Styling removed to show diagram structure");
-                        lastRenderedCodeRef.current = activeChartCode;
-                        console.log("[Mermaid] stripStylingForRecovery fallback succeeded");
-                        return;
-                    } catch (stripErr: any) {
-                        console.warn("[Mermaid] stripStylingForRecovery also failed:", getMermaidErrorMessage(stripErr));
-                    }
+                if (!isProcessingRef.current) {
+                    setError("Unable to render this diagram. The source data was preserved.\n\nRaw error:\n" + lastErrorMsg);
                 }
             }
             
@@ -767,21 +728,7 @@ export const Mermaid: React.FC<MermaidProps> = ({ chart, onOpenModal, viewOnly, 
                     consecutiveFailures++;
                     
                     // After 3 consecutive failures, try stripStylingForRecovery as fallback
-                    if (consecutiveFailures >= 3) {
-                        const strippedCode = stripStylingForRecovery(codeToFix);
-                        try {
-                            const result = await mermaid.render(`${renderId}-stripped-${round}`, strippedCode);
-                            setSvg(result.svg);
-                            setError('⚠ Styling removed to show diagram structure.');
-                            setActiveChartCode(strippedCode);
-                            lastRenderedCodeRef.current = strippedCode;
-                            setAiHealing(false);
-                            console.log('[Mermaid] stripStylingForRecovery fallback succeeded');
-                            return;
-                        } catch (stripErr: any) {
-                            console.warn('[Mermaid] stripStylingForRecovery also failed');
-                        }
-                        // All fallbacks failed — show error and stop
+                    if (consecutiveFailures >= 2) {
                         break;
                     }
                     
@@ -838,22 +785,6 @@ export const Mermaid: React.FC<MermaidProps> = ({ chart, onOpenModal, viewOnly, 
             }
         }
         
-        // All AI healing rounds exhausted — try stripStylingForRecovery as final fallback
-        const strippedCode = stripStylingForRecovery(codeToFix);
-        try {
-            const result = await mermaid.render(`${renderId}-stripped-final`, strippedCode);
-            setSvg(result.svg);
-            setError('⚠ Styling removed to show diagram structure.');
-            setActiveChartCode(strippedCode);
-            lastRenderedCodeRef.current = strippedCode;
-            setAiHealing(false);
-            console.log('[Mermaid] stripStylingForRecovery final fallback succeeded');
-            return;
-        } catch (stripErr: any) {
-            console.warn('[Mermaid] stripStylingForRecovery final fallback also failed');
-        }
-        
-        // Everything failed — show the error
         setError(lastErrorRef.current || errorMsg || 'Diagram could not be fixed after multiple AI attempts.');
         setAiHealing(false);
     };
