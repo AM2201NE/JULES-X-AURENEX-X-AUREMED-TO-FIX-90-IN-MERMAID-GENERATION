@@ -66,6 +66,12 @@ interface AppData {
 
 let inMemorySessionsCache: ChatSession[] | null = null;
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
+let chatWriteQueue: Promise<void> = Promise.resolve();
+
+function enqueueChatWrite(operation: () => Promise<void>): Promise<void> {
+    chatWriteQueue = chatWriteQueue.catch(() => {}).then(operation);
+    return chatWriteQueue;
+}
 
 function getBlocksText(blocks: Block[]): string {
     if (!blocks) return '';
@@ -290,22 +296,24 @@ export const dataService = {
         return getDb().chats.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     },
 
-    saveChatSessionAsync: async (session: ChatSession): Promise<void> => {
-        const sessions = await dataService.getChatSessionsAsync();
-        const index = sessions.findIndex(s => s.id === session.id);
-        const cloned = structuredClone(session);
+    saveChatSessionAsync: (session: ChatSession): Promise<void> => {
+        return enqueueChatWrite(async () => {
+            const sessions = await dataService.getChatSessionsAsync();
+            const index = sessions.findIndex(s => s.id === session.id);
+            const cloned = structuredClone(session);
 
-        if (index >= 0) {
-            sessions[index] = cloned;
-        } else {
-            sessions.unshift(cloned);
-        }
-        inMemorySessionsCache = sessions;
-        await set(CHAT_STORAGE_KEY, sessions);
+            if (index >= 0) {
+                sessions[index] = cloned;
+            } else {
+                sessions.unshift(cloned);
+            }
+            inMemorySessionsCache = sessions;
+            await set(CHAT_STORAGE_KEY, sessions);
 
-        const db = getDb();
-        db.chats = sessions;
-        saveDb(db);
+            const db = getDb();
+            db.chats = sessions;
+            saveDb(db);
+        });
     },
 
     saveChatSession: (session: ChatSession): void => {
@@ -320,15 +328,17 @@ export const dataService = {
         }, 250);
     },
 
-    deleteChatSessionAsync: async (sessionId: string): Promise<void> => {
-        const sessions = await dataService.getChatSessionsAsync();
-        const filtered = sessions.filter(s => s.id !== sessionId);
-        inMemorySessionsCache = filtered;
-        await set(CHAT_STORAGE_KEY, filtered);
+    deleteChatSessionAsync: (sessionId: string): Promise<void> => {
+        return enqueueChatWrite(async () => {
+            const sessions = await dataService.getChatSessionsAsync();
+            const filtered = sessions.filter(s => s.id !== sessionId);
+            inMemorySessionsCache = filtered;
+            await set(CHAT_STORAGE_KEY, filtered);
 
-        const db = getDb();
-        db.chats = filtered;
-        saveDb(db);
+            const db = getDb();
+            db.chats = filtered;
+            saveDb(db);
+        });
     },
 
     deleteChatSession: (sessionId: string): void => {
