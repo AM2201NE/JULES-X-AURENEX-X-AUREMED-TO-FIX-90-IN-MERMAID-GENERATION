@@ -1,5 +1,3 @@
-
-
 import { BlockType } from '../types';
 import type { Page, Block, User, Integrations, NotionPageInfo, NotionBlock, RichText, ImageBlock, Gender, ChatSession, ChatMessage, TaggableItem } from '../types';
 import { v4 as uuidv4 } from 'uuid';
@@ -39,19 +37,6 @@ const initialPages: Page[] = [
       },
     ],
   },
-   {
-    id: 'project-management',
-    title: 'Project Management Best Practices',
-    createdAt: new Date().toISOString(),
-    lastAccessedAt: new Date(Date.now() - 86400000).toISOString(), // 1 day ago
-    content: [
-      { id: uuidv4(), type: BlockType.H1, content: 'Project Management Best Practices' },
-      { id: uuidv4(), type: BlockType.P, content: 'Effective project management is key to success. Methodologies like Agile and Scrum help teams deliver value iteratively.' },
-      { id: uuidv4(), type: BlockType.UL, content: 'Key principles include clear communication' },
-      { id: uuidv4(), type: BlockType.UL, content: 'Defined roles' },
-      { id: uuidv4(), type: BlockType.UL, content: 'Regular feedback loops' },
-    ],
-  },
 ];
 
 const defaultUser: User = {
@@ -65,8 +50,10 @@ const defaultUser: User = {
     gender: 'prefer_not_to_say',
 };
 
-
 const DB_KEY = 'aurenex_data';
+const CHAT_STORAGE_KEY = 'aurenex_chat_sessions_v2';
+const ACTIVE_CHAT_KEY = 'aurenex_active_chat_id';
+const CHAT_ATTACHMENT_PREFIX = 'aurenex_chat_attachment:';
 const NOTION_CACHE_KEY = 'aurenex_notion_pages_cache';
 const GOOGLE_DRIVE_CACHE_KEY = 'aurenex_google_drive_cache';
 
@@ -77,96 +64,21 @@ interface AppData {
     chats: ChatSession[];
 }
 
-function getDb(): AppData {
-    try {
-        const data = localStorage.getItem(DB_KEY);
-        if (data) {
-            const parsedData = JSON.parse(data);
-             if (!parsedData.user) {
-                parsedData.user = defaultUser;
-            }
-            if (!parsedData.integrations) {
-                parsedData.integrations = { notion: { apiKey: null, pageTags: {} }, googleDrive: { accessToken: null, selectedFiles: [], fileTags: {} } };
-            } else {
-                if (!parsedData.integrations.googleDrive) {
-                    parsedData.integrations.googleDrive = { accessToken: null, selectedFiles: [], fileTags: {} };
-                } else if (!parsedData.integrations.googleDrive.fileTags) {
-                    parsedData.integrations.googleDrive.fileTags = {};
-                }
-                if (!parsedData.integrations.notion) {
-                    parsedData.integrations.notion = { apiKey: null, pageTags: {} };
-                } else if (!parsedData.integrations.notion.pageTags) {
-                    parsedData.integrations.notion.pageTags = {};
-                }
-            }
-            if (!parsedData.chats) {
-                parsedData.chats = [];
-            }
-            return parsedData;
+let inMemorySessionsCache: ChatSession[] | null = null;
+let persistTimer: ReturnType<typeof setTimeout> | null = null;
+
+function getBlocksText(blocks: Block[]): string {
+    if (!blocks) return '';
+    let text = '';
+    for (const block of blocks.filter(Boolean)) {
+        text += (block.content || '').replace(/<[^>]*>?/gm, '') + ' ';
+        if (block.children) text += getBlocksText(block.children);
+        if (block.tableData) {
+            block.tableData.rows.forEach(row => row.cells.forEach(cell => { text += (cell.content || '').replace(/<[^>]*>?/gm, '') + ' '; }));
         }
-    } catch (error) {
-        console.error("Failed to read from localStorage", error);
     }
-    const defaultData: AppData = {
-        pages: initialPages,
-        integrations: {
-            notion: { apiKey: null },
-            googleDrive: { accessToken: null, selectedFiles: [] }
-        },
-        user: defaultUser,
-        chats: [],
-    };
-    try {
-        localStorage.setItem(DB_KEY, JSON.stringify(defaultData));
-    } catch (e) {
-        console.error("Failed to initialize localStorage", e);
-    }
-    return defaultData;
+    return text;
 }
-
-function saveDb(data: AppData) {
-    try {
-        // Create a deep copy to avoid mutating the in-memory state of the app.
-        const dataForStorage = JSON.parse(JSON.stringify(data));
-
-        // Strip large, derived base64 image data before saving to prevent exceeding localStorage quota.
-        // This keeps images available in the live application state for the current session.
-        if (dataForStorage.chats) {
-            for (const session of dataForStorage.chats) {
-                for (const msg of session.messages) {
-                    // Strip Anki card images
-                    if (msg.ankiCards) {
-                        for (const card of msg.ankiCards) {
-                            delete (card as any).question_image_b64;
-                        }
-                    }
-                    // Strip user attachments data which is stored as base64
-                    if (msg.attachments) {
-                        for (const attachment of msg.attachments) {
-                            // 'data' holds the large base64 string
-                            delete (attachment as any).data;
-                        }
-                    }
-                    // Strip image analysis source image if it's a data URI
-                    if (msg.imageAnalyses) {
-                         for (const analysis of msg.imageAnalyses) {
-                            if (analysis.imageUri && analysis.imageUri.startsWith('data:')) {
-                                // 'imageUri' can be a large data URI
-                                delete (analysis as any).imageUri;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        localStorage.setItem(DB_KEY, JSON.stringify(dataForStorage));
-    } catch (error) {
-        console.error("Failed to save to localStorage", error);
-        // We can't do much more if it still fails, as it means the base data is too large.
-    }
-}
-
 
 function notionRichTextToHtml(richText: RichText[]): string {
     if (!Array.isArray(richText)) return '';
@@ -188,7 +100,6 @@ function convertNotionBlocks(notionBlocks: NotionBlock[]): Block[] {
     
     for (const block of notionBlocks.filter(Boolean)) {
         let newBlock: Block | null = null;
-        
         switch (block.type) {
             case 'heading_1': newBlock = { id: uuidv4(), type: BlockType.H1, content: notionRichTextToHtml(block.heading_1!.rich_text) }; break;
             case 'heading_2': newBlock = { id: uuidv4(), type: BlockType.H2, content: notionRichTextToHtml(block.heading_2!.rich_text) }; break;
@@ -214,47 +125,66 @@ function convertNotionBlocks(notionBlocks: NotionBlock[]): Block[] {
     return aurenexBlocks;
 }
 
-const getBlocksText = (blocks: Block[]): string => {
-    if (!blocks) return '';
-    let text = '';
-    for (const block of blocks.filter(Boolean)) {
-        text += (block.content || '').replace(/<[^>]*>?/gm, '') + ' ';
-        if (block.children) text += getBlocksText(block.children);
-        if (block.tableData) {
-            block.tableData.rows.forEach(row => row.cells.forEach(cell => { text += (cell.content || '').replace(/<[^>]*>?/gm, '') + ' '; }));
+function getDb(): AppData {
+    try {
+        const data = localStorage.getItem(DB_KEY);
+        if (data) {
+            const parsedData = JSON.parse(data);
+            if (!parsedData.user) parsedData.user = defaultUser;
+            if (!parsedData.integrations) parsedData.integrations = { notion: { apiKey: null, pageTags: {} }, googleDrive: { accessToken: null, selectedFiles: [], fileTags: {} } };
+            if (!parsedData.chats) parsedData.chats = [];
+            return parsedData;
         }
+    } catch (error) {
+        console.error("Failed to read from localStorage", error);
     }
-    return text;
-};
+    const defaultData: AppData = {
+        pages: initialPages,
+        integrations: {
+            notion: { apiKey: null },
+            googleDrive: { accessToken: null, selectedFiles: [] }
+        },
+        user: defaultUser,
+        chats: [],
+    };
+    try {
+        localStorage.setItem(DB_KEY, JSON.stringify(defaultData));
+    } catch (e) {
+        console.error("Failed to initialize localStorage", e);
+    }
+    return defaultData;
+}
+
+function saveDb(data: AppData) {
+    try {
+        const dataForStorage = JSON.parse(JSON.stringify(data));
+        localStorage.setItem(DB_KEY, JSON.stringify(dataForStorage));
+    } catch (error) {
+        console.error("Failed to save to localStorage", error);
+    }
+}
 
 export const dataService = {
     getDb,
-    getUser: (): User => {
-        return getDb().user;
-    },
+    getUser: (): User => getDb().user,
 
     updateUser: (updatedFields: Partial<User>): void => {
         const db = getDb();
-        const currentUser = db.user;
-        const newUser = { ...currentUser, ...updatedFields };
-        db.user = newUser;
+        db.user = { ...db.user, ...updatedFields };
         saveDb(db);
     },
 
-    getPages: (): Page[] => {
-        return getDb().pages.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-    },
+    getPages: (): Page[] => getDb().pages.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
 
     getRecentPages: (count: number = 4): Page[] => {
-        const pages = getDb().pages;
-        return pages
+        return getDb().pages
             .filter(p => p.lastAccessedAt)
             .sort((a, b) => new Date(b.lastAccessedAt!).getTime() - new Date(a.lastAccessedAt!).getTime())
             .slice(0, count);
     },
 
     getPage: (id: string): Page | undefined => getDb().pages.find(p => p.id === id),
-    
+
     getPageByTitle: (title: string): Page | undefined => {
         const lowercasedTitle = title.toLowerCase().trim();
         return getDb().pages.find(p => p.title.toLowerCase().trim() === lowercasedTitle);
@@ -289,31 +219,11 @@ export const dataService = {
             saveDb(db);
         }
     },
-    
-    addBlockToPage: (pageId: string, block: Block): Page => {
-        const db = getDb();
-        const pageIndex = db.pages.findIndex(p => p.id === pageId);
-        if (pageIndex === -1) throw new Error("Page not found");
-        db.pages[pageIndex].content.push(block);
-        saveDb(db);
-        return db.pages[pageIndex];
-    },
 
     deletePage: (id: string): void => {
         const db = getDb();
         db.pages = db.pages.filter(p => p.id !== id);
         saveDb(db);
-    },
-
-    searchPages: (query: string): Page[] => {
-        const db = getDb();
-        if (!query || typeof query !== 'string') return [];
-        const keywords = query.toLowerCase().split(/\s+/).filter(Boolean);
-        if (keywords.length === 0) return [];
-        return db.pages.filter(page => {
-            const pageContent = `${page.title} ${getBlocksText(page.content)}`.toLowerCase();
-            return keywords.some(keyword => pageContent.includes(keyword));
-        });
     },
 
     getIntegrations: (): Integrations => getDb().integrations,
@@ -323,7 +233,7 @@ export const dataService = {
         db.integrations.notion.apiKey = apiKey;
         saveDb(db);
     },
-    
+
     getNotionApiKey: (): string | null => getDb().integrations.notion.apiKey,
 
     disconnectNotion: (): void => {
@@ -334,7 +244,6 @@ export const dataService = {
 
     saveGoogleDriveIntegration: (accessToken: string, selectedFiles: { id: string, name: string, mimeType: string }[]): void => {
         const db = getDb();
-        // Token expires in ~1 hour (3600s), set 3500s buffer
         db.integrations.googleDrive = { accessToken, expiresAt: Date.now() + 3500 * 1000, selectedFiles };
         saveDb(db);
     },
@@ -352,182 +261,155 @@ export const dataService = {
         db.integrations.googleDrive = { accessToken: null, selectedFiles: [] };
         saveDb(db);
     },
-    
-    importNotionPage: (notionPage: NotionPageInfo): Page => {
-        const content = convertNotionBlocks(notionPage.content || []);
-        return dataService.createPage(notionPage.title, content, notionPage.id);
+
+    getChatSessionsAsync: async (): Promise<ChatSession[]> => {
+        if (inMemorySessionsCache) {
+            return inMemorySessionsCache;
+        }
+        try {
+            const sessions = await get<ChatSession[]>(CHAT_STORAGE_KEY);
+            if (Array.isArray(sessions) && sessions.length > 0) {
+                inMemorySessionsCache = sessions;
+                return sessions;
+            }
+        } catch (e) {
+            console.warn("Failed to read chat sessions from IndexedDB, fallback to localStorage", e);
+        }
+        const legacySessions = getDb().chats;
+        inMemorySessionsCache = legacySessions;
+        if (legacySessions.length > 0) {
+            await set(CHAT_STORAGE_KEY, legacySessions);
+        }
+        return legacySessions;
     },
 
     getChatSessions: (): ChatSession[] => {
+        if (inMemorySessionsCache) {
+            return inMemorySessionsCache;
+        }
         return getDb().chats.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     },
 
-    saveChatSession: (session: ChatSession): void => {
-        const db = getDb();
-        const index = db.chats.findIndex(c => c.id === session.id);
-        if (index !== -1) {
-            db.chats[index] = session;
+    saveChatSessionAsync: async (session: ChatSession): Promise<void> => {
+        const sessions = await dataService.getChatSessionsAsync();
+        const index = sessions.findIndex(s => s.id === session.id);
+        const cloned = structuredClone(session);
+
+        if (index >= 0) {
+            sessions[index] = cloned;
         } else {
-            db.chats.push(session);
+            sessions.unshift(cloned);
         }
+        inMemorySessionsCache = sessions;
+        await set(CHAT_STORAGE_KEY, sessions);
+
+        const db = getDb();
+        db.chats = sessions;
+        saveDb(db);
+    },
+
+    saveChatSession: (session: ChatSession): void => {
+        dataService.saveChatSessionAsync(session).catch(e => console.error("Async save failed", e));
+    },
+
+    scheduleChatPersistence: (session: ChatSession): void => {
+        if (persistTimer) clearTimeout(persistTimer);
+        persistTimer = setTimeout(() => {
+            dataService.saveChatSessionAsync(session);
+            persistTimer = null;
+        }, 250);
+    },
+
+    deleteChatSessionAsync: async (sessionId: string): Promise<void> => {
+        const sessions = await dataService.getChatSessionsAsync();
+        const filtered = sessions.filter(s => s.id !== sessionId);
+        inMemorySessionsCache = filtered;
+        await set(CHAT_STORAGE_KEY, filtered);
+
+        const db = getDb();
+        db.chats = filtered;
         saveDb(db);
     },
 
     deleteChatSession: (sessionId: string): void => {
-        const db = getDb();
-        db.chats = db.chats.filter(c => c.id !== sessionId);
-        saveDb(db);
+        dataService.deleteChatSessionAsync(sessionId).catch(e => console.error("Async delete failed", e));
+    },
+
+    getActiveChatSessionId: (): string | null => {
+        try {
+            return localStorage.getItem(ACTIVE_CHAT_KEY);
+        } catch {
+            return null;
+        }
+    },
+
+    setActiveChatSessionId: (id: string): void => {
+        try {
+            localStorage.setItem(ACTIVE_CHAT_KEY, id);
+        } catch {
+            // ignore
+        }
+    },
+
+    saveAttachmentBlob: async (attachmentId: string, blob: Blob): Promise<string> => {
+        const key = `${CHAT_ATTACHMENT_PREFIX}${attachmentId}`;
+        await set(key, blob);
+        return key;
+    },
+
+    getAttachmentBlob: async (attachmentId: string): Promise<Blob | null> => {
+        const key = `${CHAT_ATTACHMENT_PREFIX}${attachmentId}`;
+        const blob = await get<Blob>(key);
+        return blob || null;
     },
 
     getTaggableItems: async (): Promise<TaggableItem[]> => {
         const taggableItems: TaggableItem[] = [];
-        
-        // 1. Get Aurenex pages
         const aurenexPages = dataService.getPages();
         aurenexPages.forEach(p => {
-            taggableItems.push({
-                id: p.id,
-                title: p.title,
-                type: 'aurenex_page'
-            });
+            taggableItems.push({ id: p.id, title: p.title, type: 'aurenex_page' });
         });
-
-        // 2. Get Notion pages and tags
-        const notionApiKey = dataService.getNotionApiKey();
-        if (notionApiKey) {
-            try {
-                // Using the cached list is fast and efficient here
-                const notionPages = await notionService.listAccessiblePages(notionApiKey);
-                const notionTags = new Map<string, TaggableItem>();
-                const db = getDb();
-                const pageTags = db.integrations.notion?.pageTags || {};
-
-                notionPages.forEach(p => {
-                    const aiTags = pageTags[p.id] || [];
-                    const nativeTags = p.tags || [];
-                    
-                    const combinedTagsMap = new Map<string, {name: string, color: string}>();
-                    nativeTags.forEach(t => combinedTagsMap.set(t.name, {name: t.name, color: t.color}));
-                    aiTags.forEach(t => {
-                        if (!combinedTagsMap.has(t)) {
-                            combinedTagsMap.set(t, {name: t, color: 'default'});
-                        }
-                    });
-                    
-                    taggableItems.push({
-                        id: `notion-${p.id}`,
-                        title: p.title,
-                        type: 'notion_page',
-                        notionPageId: p.id,
-                        tags: Array.from(combinedTagsMap.values())
-                    });
-
-                    aiTags.forEach(tag => {
-                        if (!notionTags.has(tag)) {
-                            notionTags.set(tag, {
-                                id: `notion_tag-${tag}`,
-                                title: tag,
-                                type: 'notion_tag',
-                                color: 'default'
-                            });
-                        }
-                    });
-                    
-                    nativeTags.forEach(tag => {
-                        if (!notionTags.has(tag.name)) {
-                            notionTags.set(tag.name, {
-                                id: `notion_tag-${tag.name}`,
-                                title: tag.name,
-                                type: 'notion_tag',
-                                color: tag.color
-                            });
-                        }
-                    });
-                });
-                
-                taggableItems.push(...Array.from(notionTags.values()));
-            } catch(e) {
-                console.warn("Could not fetch Notion taggable items:", e);
-            }
-        }
-        
-        // 3. Get Google Drive files
-        const driveIntegration = dataService.getGoogleDriveIntegration();
-        if (driveIntegration?.accessToken && driveIntegration.selectedFiles.length > 0) {
-            driveIntegration.selectedFiles.forEach(file => {
-                const isFolder = file.mimeType === 'application/vnd.google-apps.folder';
-                const fileTags = driveIntegration.fileTags?.[file.id] || [];
-                taggableItems.push({
-                    id: file.id,
-                    title: file.name,
-                    subtitle: file.path ? `Google Drive • ${file.path}` : 'Google Drive', 
-                    type: 'drive_file',
-                    isFolder,
-                    tags: fileTags.map(t => ({ name: t, color: 'blue' }))
-                });
-            });
-        }
-        
         return taggableItems.sort((a, b) => a.title.localeCompare(b.title));
-    },
-
-    setNotionPagesCache: async (pages: NotionPageInfo[]): Promise<void> => {
-        try {
-            const cacheData = { timestamp: Date.now(), pages };
-            await set(NOTION_CACHE_KEY, cacheData);
-        } catch (error) {
-            console.error("Failed to save Notion cache to IndexedDB", error);
-        }
     },
 
     getNotionPagesCache: async (): Promise<NotionPageInfo[] | null> => {
         try {
             const data = await get(NOTION_CACHE_KEY);
-            if (data) {
-                const { timestamp, pages } = data;
-                // Cache for 1 hour
-                if (Date.now() - timestamp < 60 * 60 * 1000) {
-                    return pages;
-                }
-            }
-        } catch (error) {
-            console.error("Failed to read Notion cache from IndexedDB", error);
+            return data ? data.pages : null;
+        } catch {
+            return null;
         }
-        return null;
+    },
+
+    setNotionPagesCache: async (pages: NotionPageInfo[]): Promise<void> => {
+        await set(NOTION_CACHE_KEY, { timestamp: Date.now(), pages });
     },
 
     clearNotionPagesCache: async (): Promise<void> => {
         await del(NOTION_CACHE_KEY);
     },
 
-    setGoogleDriveCache: async (files: any[]): Promise<void> => {
-        try {
-            const cacheData = { timestamp: Date.now(), files };
-            await set(GOOGLE_DRIVE_CACHE_KEY, cacheData);
-        } catch (error) {
-            console.error("Failed to save Google Drive cache to IndexedDB", error);
-        }
-    },
-
     getGoogleDriveCache: async (): Promise<any[] | null> => {
         try {
             const data = await get(GOOGLE_DRIVE_CACHE_KEY);
-            if (data) {
-                const { timestamp, files } = data;
-                // Cache for 1 hour
-                if (Date.now() - timestamp < 60 * 60 * 1000) {
-                    return files;
-                }
-            }
-        } catch (error) {
-            console.error("Failed to read Google Drive cache from IndexedDB", error);
+            return data ? data.files : null;
+        } catch {
+            return null;
         }
-        return null;
+    },
+
+    setGoogleDriveCache: async (files: any[]): Promise<void> => {
+        await set(GOOGLE_DRIVE_CACHE_KEY, { timestamp: Date.now(), files });
     },
 
     clearGoogleDriveCache: async (): Promise<void> => {
         await del(GOOGLE_DRIVE_CACHE_KEY);
     },
-    
-    getBlocksText,
+
+    importNotionPage: (notionPage: NotionPageInfo): Page => {
+        const content = convertNotionBlocks(notionPage.content || []);
+        return dataService.createPage(notionPage.title, content, notionPage.id);
+    },
+
+    getBlocksText: (blocks: Block[]): string => getBlocksText(blocks),
 };
