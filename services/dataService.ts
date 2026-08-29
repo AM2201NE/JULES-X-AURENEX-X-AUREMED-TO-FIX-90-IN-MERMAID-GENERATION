@@ -68,6 +68,43 @@ let inMemorySessionsCache: ChatSession[] | null = null;
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
 let chatWriteQueue: Promise<void> = Promise.resolve();
 
+function flushChatWritesAndSnapshotSync(): void {
+    // Beforeunload is synchronous — prefer fresh localStorage data over stale in-memory cache
+    try {
+        const db = getDb();
+        const freshChats = db.chats || [];
+        // If inMemorySessionsCache exists and has more sessions/messages, merge; else use fresh DB
+        const useCache = inMemorySessionsCache && (inMemorySessionsCache.length > freshChats.length || (inMemorySessionsCache[0]?.messages?.length || 0) > (freshChats[0]?.messages?.length || 0));
+        const snapshot = useCache ? inMemorySessionsCache! : freshChats;
+        db.chats = JSON.parse(JSON.stringify(snapshot));
+        saveDb(db);
+        inMemorySessionsCache = JSON.parse(JSON.stringify(snapshot));
+    } catch (e) { console.warn('Beforeunload snapshot failed', e); }
+}
+
+function setupBeforeUnloadSnapshot() {
+    if (typeof window !== 'undefined') {
+        window.addEventListener('beforeunload', () => {
+            flushChatWritesAndSnapshotSync();
+        });
+        // Also merge queued writes on page unload (fire-and-forget IndexedDB update)
+        window.addEventListener('beforeunload', () => {
+            chatWriteQueue.catch(() => {}).then(async () => {
+                try {
+                    const sessions = inMemorySessionsCache || getDb().chats || [];
+                    await set(CHAT_STORAGE_KEY, JSON.parse(JSON.stringify(sessions)));
+                    inMemorySessionsCache = JSON.parse(JSON.stringify(sessions));
+                    const db = getDb();
+                    db.chats = JSON.parse(JSON.stringify(sessions));
+                    saveDb(db);
+                } catch (e) { /* silent on exit */ }
+            });
+        });
+    }
+}
+
+setupBeforeUnloadSnapshot();
+
 function enqueueChatWrite(operation: () => Promise<void>): Promise<void> {
     chatWriteQueue = chatWriteQueue.catch(() => {}).then(operation);
     return chatWriteQueue;
@@ -269,24 +306,11 @@ export const dataService = {
     },
 
     getChatSessionsAsync: async (): Promise<ChatSession[]> => {
-        if (inMemorySessionsCache) {
-            return inMemorySessionsCache;
-        }
-        try {
-            const sessions = await get<ChatSession[]>(CHAT_STORAGE_KEY);
-            if (Array.isArray(sessions) && sessions.length > 0) {
-                inMemorySessionsCache = sessions;
-                return sessions;
-            }
-        } catch (e) {
-            console.warn("Failed to read chat sessions from IndexedDB, fallback to localStorage", e);
-        }
-        const legacySessions = getDb().chats;
-        inMemorySessionsCache = legacySessions;
-        if (legacySessions.length > 0) {
-            await set(CHAT_STORAGE_KEY, legacySessions);
-        }
-        return legacySessions;
+        // FIX: Prefer localStorage directly (always fresh, sync-written by saveChatSession)
+        const fromStorage = getDb().chats || [];
+        console.log('[load] localStorage has', fromStorage.length, 'sessions');
+        inMemorySessionsCache = fromStorage;
+        return fromStorage.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     },
 
     getChatSessions: (): ChatSession[] => {
@@ -317,7 +341,17 @@ export const dataService = {
     },
 
     saveChatSession: (session: ChatSession): void => {
-        dataService.saveChatSessionAsync(session).catch(e => console.error("Async save failed", e));
+        console.log('[persist] Saving session', session.id, 'messages:', session.messages?.length || 0);
+        // Immediate localStorage sync for reliability + async IndexedDB for durability
+        try {
+            const db = getDb();
+            const idx = db.chats.findIndex((c: ChatSession) => c.id === session.id);
+            const cloned = JSON.parse(JSON.stringify(session));
+            if (idx >= 0) db.chats[idx] = cloned; else db.chats.unshift(cloned);
+            saveDb(db);
+            inMemorySessionsCache = JSON.parse(JSON.stringify(db.chats));
+        } catch (e) { console.warn('Sync save failed', e); }
+        dataService.saveChatSessionAsync(session).catch(e => console.error("Async IndexedDB save failed", e));
     },
 
     scheduleChatPersistence: (session: ChatSession): void => {

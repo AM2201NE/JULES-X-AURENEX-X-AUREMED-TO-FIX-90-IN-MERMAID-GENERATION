@@ -1,19 +1,18 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useResponsive } from '../hooks/useResponsive';
-import { runAurePalAgent, SearchScope, generateSpeech, fixMermaidDiagram } from '../services/geminiService';
+import { runAurePalAgent, SearchScope, generateSpeech } from '../services/geminiService';
 import { dataService } from '../services/dataService';
 import type { ChatMessage, ChatAttachment, ChatSession, MediaToRender, GeneratedFile, ImageAnalysis, User, AiPersonality, AnkiCard, TaggableItem } from '../types';
 import { PlusIcon, XIcon, SendIcon, AiLogoIcon, NotionIcon, FileIcon, ExternalLinkIcon, Volume2Icon, StopCircleIcon, PaperclipIcon, TrashIcon, MicIcon, SparklesIcon, RefreshCwIcon, InfoIcon, QuoteIcon, DownloadIcon, FileTextIcon, PresentationIcon, SheetIcon, FileCodeIcon, MenuIcon, WaveformIcon, CopyIcon, CheckCircleIcon, UserIcon, GlobeIcon, AurenexLogoIcon, ChevronLeftIcon, ChevronRightIcon, MessageSquareIcon, SearchIcon, BookOpenIcon, DatabaseIcon, TagIcon, ZoomInIcon, ZoomOutIcon, FolderIcon, Loader2Icon, FlaskConicalIcon, ReplyIcon } from './icons';
 import { v4 as uuidv4 } from 'uuid';
 import ImageOverlay from './ImageOverlay';
 import MarkdownRenderer, { getMermaidErrorMessage } from './MarkdownRenderer';
-import { getMermaid } from '../lib/mermaid/mermaidRuntime';
+import { createMermaidDocument, MermaidDocument } from '../lib/mermaid/document';
 import ErrorBoundary from './ErrorBoundary';
 import { notionService, fetchWithRetry } from '../services/notionService';
 import AnkiCardPreview from './AnkiCardPreview';
 import { ankiService } from '../services/ankiService';
 import AIThinkingBlock from './ui/AiThinkingBlock';
-import { sanitizeMermaidCode, quickFixMermaid, stripStylingForRecovery } from '../lib/mermaidUtils';
 import { EvidencePanel } from './EvidencePanel';
 
 interface AiChatWindowProps {
@@ -483,6 +482,7 @@ const MermaidModal: React.FC<MermaidModalProps> = ({ chart, onClose }) => {
   const [isSaveMenuOpen, setIsSaveMenuOpen] = useState(false);
   const [scale, setScale] = useState(1);
   const [position, setPosition] = useState({ x: 0, y: 0 });
+  const [mermaidDoc, setMermaidDoc] = useState<MermaidDocument | null>(null);
 
   const isPinching = useRef(false);
   const isPanning = useRef(false);
@@ -501,117 +501,76 @@ const MermaidModal: React.FC<MermaidModalProps> = ({ chart, onClose }) => {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  // Process chart through the canonical Mermaid pipeline
   useEffect(() => {
-    if (viewMode === 'preview' && ref.current && chart) {
+    let cancelled = false;
+    const processChart = async () => {
+      if (!chart) return;
       const rawChart = chart.replace(/<br><br>\s*<div[\s\S]*$/, '');
-      let cleanChart = sanitizeMermaidCode(rawChart);
-      
-      if (!cleanChart || cleanChart.trim() === '') {
-         ref.current.innerHTML = '';
-         setError(null);
-         return;
+      try {
+        const doc = await createMermaidDocument(rawChart, { maxHealingRounds: 3 });
+        if (!cancelled) {
+          setMermaidDoc(doc);
+          setError(doc.validation.valid ? null : doc.validation.error || null);
+        }
+      } catch (e) {
+        if (!cancelled) {
+          const errorMsg = getMermaidErrorMessage(e);
+          setError(errorMsg);
+          setMermaidDoc({
+            id: 'error',
+            originalCode: rawChart,
+            canonicalCode: rawChart,
+            diagramType: 'flowchart',
+            svg: null,
+            validation: { valid: false, error: errorMsg },
+            healing: { attempted: false, changed: false, rounds: 0, source: 'none' },
+            math: { detected: false, validated: false },
+            theme: { background: '#1b1e24', textColor: '#ffffff', edgeLabelBackground: '#3f4248' },
+            generatedAt: Date.now()
+          });
+        }
       }
-      
-      const renderModalChart = async () => {
-        const mermaid = getMermaid();
+    };
+    processChart();
+    return () => { cancelled = true; };
+  }, [chart]);
 
-        const renderId = `mermaid-modal-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`;
-
-        const renderSvgToRef = (svg: string) => {
-          if (ref.current) {
-            ref.current.innerHTML = svg;
-            setError(null);
-            setTimeout(() => {
-              if (!ref.current) return;
-              if ((window as any).renderMathInElement) {
-                try {
-                  (window as any).renderMathInElement(ref.current, {
-                    delimiters: [
-                      {left: '$$', right: '$$', display: true},
-                      {left: '$', right: '$', display: false},
-                      {left: '\\(', right: '\\)', display: false},
-                      {left: '\\[', right: '\\]', display: true}
-                    ],
-                    throwOnError: false
-                  });
-                } catch (e) {
-                  console.warn('KaTeX rendering in Mermaid modal failed:', e);
-                }
-                const foreignObjects = ref.current.querySelectorAll('foreignObject');
-                foreignObjects.forEach(fo => {
-                  try {
-                    (window as any).renderMathInElement(fo, {
-                      delimiters: [
-                        {left: '$$', right: '$$', display: true},
-                        {left: '$', right: '$', display: false},
-                        {left: '\\(', right: '\\)', display: false},
-                        {left: '\\[', right: '\\]', display: true}
-                      ],
-                      throwOnError: false
-                    });
-                  } catch (e) {
-                    console.warn('KaTeX rendering in foreignObject failed:', e);
-                  }
-                });
-              }
-            }, 100);
+  // After SVG is rendered, call KaTeX to render any LaTeX inside the diagram nodes
+  useEffect(() => {
+    if (mermaidDoc?.svg && ref.current) {
+      const timeoutId = setTimeout(() => {
+        if (!ref.current) return;
+        const renderKatexInContainer = (container: Element) => {
+          if (!(window as any).renderMathInElement) return;
+          try {
+            (window as any).renderMathInElement(container, {
+              delimiters: [
+                { left: '$$', right: '$$', display: true },
+                { left: '$', right: '$', display: false },
+                { left: '\\(', right: '\\\)', display: false },
+                { left: '\\[', right: '\\\\]', display: true }
+              ],
+              throwOnError: false
+            });
+          } catch (e) {
+            console.warn('KaTeX rendering in Mermaid modal failed:', e);
           }
         };
-
-        // Try direct render first
-        try {
-          const { svg } = await mermaid.render(renderId, cleanChart);
-          renderSvgToRef(svg);
-          return;
-        } catch (e1: any) {
-          const errMsg1 = getMermaidErrorMessage(e1);
-          console.warn("Modal Mermaid initial render error:", errMsg1);
-
-          // Try quickFixMermaid
-          const quickFixed = quickFixMermaid(cleanChart, errMsg1);
-          if (quickFixed) {
-            const reSanitized = sanitizeMermaidCode(quickFixed);
-            try {
-              const { svg } = await mermaid.render(`${renderId}-quick`, reSanitized);
-              renderSvgToRef(svg);
-              return;
-            } catch (e2) {}
-          }
-
-          // Try stripStylingForRecovery
-          const stripped = stripStylingForRecovery(cleanChart);
-          if (stripped && stripped !== cleanChart) {
-            try {
-              const { svg } = await mermaid.render(`${renderId}-stripped`, stripped);
-              renderSvgToRef(svg);
-              return;
-            } catch (e3) {}
-          }
-
-          // Try AI healing if local recovery passes failed
-          try {
-            const aiFixed = await fixMermaidDiagram(cleanChart, errMsg1);
-            if (aiFixed) {
-              const sanitizedAiFixed = sanitizeMermaidCode(aiFixed);
-              const { svg } = await mermaid.render(`${renderId}-ai`, sanitizedAiFixed);
-              renderSvgToRef(svg);
-              return;
-            }
-          } catch (e4) {}
-
-          // If all recovery passes failed, display formatted user friendly error
-          setError(formatUserFriendlyMermaidError(errMsg1, cleanChart));
-        }
-      };
-
-      renderModalChart();
+        renderKatexInContainer(ref.current);
+        const foreignObjects = ref.current.querySelectorAll('foreignObject');
+        foreignObjects.forEach(fo => {
+          try { renderKatexInContainer(fo); } catch (e) { console.warn('KaTeX rendering in foreignObject failed:', e); }
+        });
+      }, 100);
+      return () => clearTimeout(timeoutId);
     }
-  }, [chart, viewMode]);
+  }, [mermaidDoc?.svg]);
 
   if (!chart) return null;
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(chart).catch(err => console.error("Copy failed", err));
+    navigator.clipboard.writeText(mermaidDoc?.canonicalCode || chart).catch(err => console.error("Copy failed", err));
   };
 
   const downloadUrl = (url: string, fileName: string) => {
@@ -625,7 +584,7 @@ const MermaidModal: React.FC<MermaidModalProps> = ({ chart, onClose }) => {
   };
 
   const handleSaveImage = async (format: 'png' | 'svg' | 'jpeg', quality?: number) => {
-    if (!ref.current || !containerRef.current) return;
+    if (!ref.current || !containerRef.current || !mermaidDoc?.svg) return;
     const svgElement = ref.current.querySelector('svg');
     if (!svgElement) return;
     svgElement.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
@@ -715,9 +674,7 @@ const MermaidModal: React.FC<MermaidModalProps> = ({ chart, onClose }) => {
     setPosition({ x: lastPosition.current.x + dx, y: lastPosition.current.y + dy });
   };
 
-  const handleMouseUpOrLeave = () => {
-    isPanning.current = false;
-  };
+  const handleMouseUpOrLeave = () => { isPanning.current = false; };
 
   const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -782,10 +739,7 @@ const MermaidModal: React.FC<MermaidModalProps> = ({ chart, onClose }) => {
               <div className="p-4 bg-destructive/10 text-destructive text-sm rounded-md">
                 <h4 className="font-bold mb-2">Diagram Issue</h4>
                 <p className="text-xs opacity-80 leading-relaxed">{error}</p>
-                <button 
-                  onClick={() => setViewMode('code')} 
-                  className="mt-3 px-3 py-1.5 text-xs rounded bg-secondary hover:bg-accent transition-colors inline-flex items-center gap-1"
-                >
+                <button onClick={() => setViewMode('code')} className="mt-3 px-3 py-1.5 text-xs rounded bg-secondary hover:bg-accent transition-colors inline-flex items-center gap-1">
                   View Raw Code →
                 </button>
               </div>
@@ -795,18 +749,19 @@ const MermaidModal: React.FC<MermaidModalProps> = ({ chart, onClose }) => {
                   ref={ref}
                   className="mermaid"
                   style={{
-                    transform: `translate(${position.x}px, ${position.y}px) scale(${scale})`,
+                    transform: 'translate(' + position.x + 'px, ' + position.y + 'px) scale(' + scale + ')',
                     transition: isPanning.current ? 'none' : 'transform 0.1s ease-out',
                     cursor: 'inherit',
                     maxWidth: '100%',
                     maxHeight: '100%',
                   }}
+                  dangerouslySetInnerHTML={{ __html: mermaidDoc?.svg || '' }}
                 />
               </div>
             )
           ) : (
             <pre className="text-sm bg-muted p-4 rounded-md h-full overflow-auto">
-              <code className="whitespace-pre-wrap break-words">{chart}</code>
+              <code className="whitespace-pre-wrap break-words">{mermaidDoc?.canonicalCode || chart}</code>
             </pre>
           )}
         </main>
@@ -2559,26 +2514,30 @@ const AiChatWindow: React.FC<AiChatWindowProps> = ({ onClose, navigateToPage, na
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Load sessions on mount
+  // Load sessions on mount (IndexedDB + snapshot merge)
   useEffect(() => {
-    const loaded = dataService.getChatSessions();
-    setSessions(loaded);
     let targetSessionId = activeSessionId;
-    if (loaded.length > 0 && !targetSessionId) {
-      targetSessionId = loaded[0].id;
-      setActiveSessionId(targetSessionId);
-    } else if (loaded.length === 0) {
-      handleNewChat();
-      return;
-    }
+    (async () => {
+      const loaded = await dataService.getChatSessionsAsync();
+      setSessions(loaded);
+      if (loaded.length > 0 && !targetSessionId) {
+        targetSessionId = loaded[0].id;
+        setActiveSessionId(targetSessionId);
+      } else if (loaded.length === 0) {
+        handleNewChat();
+        return;
+      }
 
-    const initialSession = loaded.find(s => s.id === targetSessionId) || loaded[0];
-    if (initialSession && initialSession.messages) {
-      setMessages(initialSession.messages);
-    }
+      const initialSession = loaded.find(s => s.id === targetSessionId) || loaded[0];
+      if (initialSession) {
+        const msgs = Array.isArray(initialSession.messages) ? initialSession.messages : [];
+        setMessages(msgs);
+        console.log('[chat] Load session', initialSession.id, 'with', msgs.length, 'messages');
+      }
 
-    const user = dataService.getUser();
-    if (user?.aiPersonality) setCurrentPersonality(user.aiPersonality);
+      const user = dataService.getUser();
+      if (user?.aiPersonality) setCurrentPersonality(user.aiPersonality);
+    })();
   }, []);
 
   const activeSession = useMemo(() => sessions.find(s => s.id === activeSessionId), [sessions, activeSessionId]);
@@ -2653,11 +2612,27 @@ const AiChatWindow: React.FC<AiChatWindowProps> = ({ onClose, navigateToPage, na
     setTaggedItems([]);
   };
 
-  const handleSelectSession = (sessionId: string) => {
+  const handleSelectSession = async (sessionId: string) => {
+    // Always load fresh from storage to guarantee messages are present
+    try {
+      const loaded = await dataService.getChatSessionsAsync();
+      setSessions(loaded);
+      const session = loaded.find(s => s.id === sessionId);
+      if (session) {
+        setActiveSessionId(sessionId);
+        const msgs = Array.isArray(session.messages) ? session.messages : [];
+        setMessages(msgs);
+        setCitationPanelMessage(null);
+        if (isMobile) setIsSidebarOpen(false);
+        console.log('[chat] Loaded session', sessionId, 'with', msgs.length, 'messages');
+        return;
+      }
+    } catch (e) { console.warn('Storage load failed', e); }
+    // Ultimate fallback: use whatever is in current state
     const session = sessions.find(s => s.id === sessionId);
     if (session) {
       setActiveSessionId(sessionId);
-      setMessages([...session.messages]);
+      setMessages(session.messages ? [...session.messages] : []);
       setCitationPanelMessage(null);
       if (isMobile) setIsSidebarOpen(false);
     }

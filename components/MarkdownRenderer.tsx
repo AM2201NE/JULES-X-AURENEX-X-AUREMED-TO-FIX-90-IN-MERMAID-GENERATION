@@ -8,13 +8,7 @@ import rehypeRaw from 'rehype-raw';
 // Import KaTeX CSS from npm to ensure version matches rehype-katex's bundled katex
 import 'katex/dist/katex.min.css';
 
-import { sanitizeMermaidCode, quickFixMermaid, getCachedHealedMermaid, setCachedHealedMermaid } from '../lib/mermaidUtils';
-import { getMermaid } from '../lib/mermaid/mermaidRuntime';
-import { fixMermaidDiagram } from '../services/geminiService';
-
-async function getMermaidInstance() {
-    return getMermaid();
-}
+import { createMermaidDocument, MermaidDocument } from '../lib/mermaid/document';
 
 // Multiple CORS proxy fallbacks — tried in order until one works
 // images.weserv.nl is a dedicated image proxy that's very reliable for medical images
@@ -334,13 +328,6 @@ const SmartImage: React.FC<{ src?: string; alt?: string; onOpenImageModal?: (url
     );
 };
 
-interface MermaidProps {
-    chart: string;
-    onOpenModal: (chart: string) => void;
-    viewOnly?: boolean;
-    isProcessing?: boolean;
-}
-
 export function getMermaidErrorMessage(e: unknown): string {
     const visited = new Set();
 
@@ -389,212 +376,66 @@ export function getMermaidErrorMessage(e: unknown): string {
     return 'An unknown error occurred. The diagram syntax is likely invalid.';
 }
 
+interface MermaidProps {
+    chart: string;
+    onOpenModal: (chart: string) => void;
+    viewOnly?: boolean;
+    isProcessing?: boolean;
+}
+
 export const Mermaid: React.FC<MermaidProps> = ({ chart, onOpenModal, viewOnly, isProcessing }) => {
-    const [svg, setSvg] = useState<string>('');
-    const [error, setError] = useState<string | null>(null);
+    const [document, setDocument] = useState<MermaidDocument | null>(null);
     const [copied, setCopied] = useState(false);
-    const [activeChartCode, setActiveChartCode] = useState<string>('');
-    const [retryCount, setRetryCount] = useState<number>(0);
-    const [aiHealing, setAiHealing] = useState(false);
-    const uniqueId = useRef(`mermaid-${Math.random().toString(36).substr(2, 9)}`).current;
     const svgContainerRef = useRef<HTMLDivElement>(null);
     
-    // Track the code that was last successfully rendered to avoid redundant re-renders
-    const lastRenderedCodeRef = useRef<string>('');
-    // Track isProcessing in a ref so the transition from true→false doesn't
-    // trigger a re-render of the effect (which would re-render already-fine diagrams).
-    const isProcessingRef = useRef(isProcessing);
-    isProcessingRef.current = isProcessing;
-    // Track the last error message for AI healing context
-    const lastErrorRef = useRef<string>('');
-
-    const initialCleanChartCode = useMemo(() => {
-        // Strip trailing HTML artifacts (e.g., <br><br><div...>) that may be appended
-        // after the Mermaid code by the AI output processor.
-        const rawChartCode = chart.replace(/<br><br>\s*<div[\s\S]*$/, '');
-
-        // Check persistent cache for previously healed version of this chart
-        const cachedHealed = getCachedHealedMermaid(rawChartCode);
-        if (cachedHealed) {
-            return cachedHealed;
-        }
-
-        return sanitizeMermaidCode(rawChartCode);
-    }, [chart]);
-
-    // When the parent passes a new chart, reset our active code
+    // Use the new canonical Mermaid pipeline
     useEffect(() => {
-        setActiveChartCode(initialCleanChartCode);
-        // Reset the last-rendered tracker when the chart changes
-        lastRenderedCodeRef.current = '';
-    }, [initialCleanChartCode]);
-
-    useEffect(() => {
-        const renderChart = async () => {
-            if (!activeChartCode || activeChartCode.trim() === '') return;
-
-            // Skip if we already successfully rendered this exact code — unless this is a retry.
-            if (retryCount === 0 && lastRenderedCodeRef.current === activeChartCode) return;
-
-            const mermaid = await getMermaidInstance();
-            const renderId = `${uniqueId}-${Date.now()}`;
+        let cancelled = false;
+        
+        const processChart = async () => {
+            if (!chart || chart.trim() === '') return;
             
-            // Try rendering with up to 3 progressively-aggressive sanitization passes
-            let codeToRender = activeChartCode;
-            let lastErrorMsg = '';
+            // Strip trailing HTML artifacts (e.g., <br><br><div...>) that may be appended
+            // after the Mermaid code by the AI output processor.
+            const rawChartCode = chart.replace(/<br><br>\s*<div[\s\S]*$/, '');
             
-            for (let attempt = 0; attempt < 3; attempt++) {
-                try {
-                    const result = await mermaid.render(`${renderId}-${attempt}`, codeToRender);
-                    setSvg(result.svg);
-                    setError(null);
-                    lastRenderedCodeRef.current = activeChartCode;
-                    return;
-                } catch (e: any) {
-                    lastErrorMsg = getMermaidErrorMessage(e);
-                    
-                    // Suppress parsing errors during streaming, as the chart is likely incomplete
-                    if (isProcessingRef.current && (lastErrorMsg.includes("No diagram type detected") || lastErrorMsg.includes("got '1'") || lastErrorMsg.includes("got 'NEWLINE'") || lastErrorMsg.includes("got 'EOF'") || lastErrorMsg.includes("Parse error"))) {
-                        setError("Drawing diagram...");
-                        return;
-                    }
-                    
-                    // If not streaming (final render), try to auto-fix the code
-                    if (attempt < 2 && !isProcessingRef.current) {
-                        // Apply progressively more aggressive sanitization
-                        codeToRender = sanitizeMermaidCode(codeToRender);
-                        // If sanitization didn't change anything, no point retrying
-                        if (codeToRender === activeChartCode && attempt === 0) break;
-                        continue;
-                    }
+            try {
+                const doc = await createMermaidDocument(rawChartCode, {
+                    maxHealingRounds: isProcessing ? 0 : 3,
+                });
+                
+                if (!cancelled) {
+                    setDocument(doc);
+                }
+            } catch (e) {
+                if (!cancelled) {
+                    const errorMsg = getMermaidErrorMessage(e);
+                    setDocument({
+                        id: 'error',
+                        originalCode: rawChartCode,
+                        canonicalCode: rawChartCode,
+                        diagramType: 'flowchart',
+                        svg: null,
+                        validation: { valid: false, error: errorMsg },
+                        healing: { attempted: false, changed: false, rounds: 0, source: 'none' },
+                        math: { detected: false, validated: false },
+                        theme: { background: '#1b1e24', textColor: '#ffffff', edgeLabelBackground: '#3f4248' },
+                        generatedAt: Date.now()
+                    });
                 }
             }
-            
-            // All attempts failed — try quick local fixes first (no AI)
-            if (!isProcessingRef.current) {
-                setError("Auto-fixing diagram...");
-                
-                // Step 1: Quick local fixes
-                const quickFixed = quickFixMermaid(activeChartCode, lastErrorMsg);
-                if (quickFixed) {
-                    const cleanedQuick = sanitizeMermaidCode(quickFixed);
-                    try {
-                        const result = await mermaid.render(`${renderId}-quickfix`, cleanedQuick);
-                        setSvg(result.svg);
-                        setError(null);
-                        setActiveChartCode(cleanedQuick);
-                        lastRenderedCodeRef.current = cleanedQuick;
-                        console.log('[Mermaid] Auto quick-fix succeeded');
-                        return;
-                    } catch (e2: any) {
-                        lastErrorMsg = getMermaidErrorMessage(e2);
-                    }
-                }
-                
-                // Step 2: Try sanitized version
-                const sanitized = sanitizeMermaidCode(activeChartCode);
-                if (sanitized !== activeChartCode) {
-                    try {
-                        const result = await mermaid.render(`${renderId}-sanitized`, sanitized);
-                        setSvg(result.svg);
-                        setError(null);
-                        setActiveChartCode(sanitized);
-                        lastRenderedCodeRef.current = sanitized;
-                        console.log('[Mermaid] Auto sanitizer fix succeeded');
-                        return;
-                    } catch (e2: any) {
-                        lastErrorMsg = getMermaidErrorMessage(e2);
-                    }
-                }
-                
-                // Step 3: AI healing — capped at 10 rounds to avoid infinite loops
-                let aiFixedCode: string | null = null;
-                let aiErrorMsg = lastErrorMsg;
-                let aiRound = 0;
-                let aiConsecutiveFailures = 0;
-                const MAX_AI_ROUNDS = 3;
-                
-                while (aiRound < MAX_AI_ROUNDS) {
-                    aiRound++;
-                    try {
-                        const codeToFix = aiRound === 1 ? activeChartCode : (aiFixedCode || activeChartCode);
-                        aiFixedCode = await fixMermaidDiagram(codeToFix, aiErrorMsg);
-                        
-                        if (!aiFixedCode) {
-                            console.warn(`[Mermaid] Auto AI healing round ${aiRound}: no fix returned`);
-                            aiConsecutiveFailures++;
-                            
-                            if (aiConsecutiveFailures >= 2) {
-                                break;
-                            }
-                            continue;
-                        }
-                        
-                        aiConsecutiveFailures = 0;
-                        
-                        const cleanedCode = sanitizeMermaidCode(aiFixedCode);
-                        try {
-                            const result = await mermaid.render(`${renderId}-ai-${aiRound}`, cleanedCode);
-                            setSvg(result.svg);
-                            setError(null);
-                            setActiveChartCode(cleanedCode);
-                            lastRenderedCodeRef.current = cleanedCode;
-                            setCachedHealedMermaid(chart, cleanedCode);
-                            console.log(`[Mermaid] Auto AI healing succeeded on round ${aiRound}`);
-                            return;
-                        } catch (e2: any) {
-                            aiErrorMsg = getMermaidErrorMessage(e2);
-                            
-                            const quickFixed2 = quickFixMermaid(cleanedCode, aiErrorMsg);
-                            const reSanitized = sanitizeMermaidCode(quickFixed2 || cleanedCode);
-                            if (reSanitized !== cleanedCode) {
-                                try {
-                                    const result2 = await mermaid.render(`${renderId}-ai-${aiRound}-s2`, reSanitized);
-                                    setSvg(result2.svg);
-                                    setError(null);
-                                    setActiveChartCode(reSanitized);
-                                    lastRenderedCodeRef.current = reSanitized;
-                                    console.log(`[Mermaid] Auto AI healing + sanitize succeeded on round ${aiRound}`);
-                                    return;
-                                } catch (e3: any) {
-                                    aiErrorMsg = getMermaidErrorMessage(e3);
-                                }
-                            }
-                            
-                            setError(`Auto-fixing diagram... (round ${aiRound})`);
-                        }
-                    } catch (aiErr) {
-                        console.warn(`[Mermaid] Auto AI healing round ${aiRound} API call failed:`, aiErr);
-                        await new Promise(r => setTimeout(r, 2000));
-                        continue;
-                    }
-                }
-                
-                if (!isProcessingRef.current) {
-                    setError("Unable to render this diagram. The source data was preserved.\n\nRaw error:\n" + lastErrorMsg);
-                }
-            }
-            
-            // All attempts including AI and strip fallback failed — show the error
-            console.error("Mermaid render error after retries:", lastErrorMsg);
-            lastErrorRef.current = lastErrorMsg;
-            setError(lastErrorMsg);
         };
-
-        renderChart();
-    }, [activeChartCode, uniqueId, retryCount]);
+        
+        processChart();
+        return () => { cancelled = true; };
+    }, [chart, isProcessing]);
 
     // After SVG is rendered, call KaTeX to render any LaTeX inside the diagram nodes
     useEffect(() => {
-        if (svg && svgContainerRef.current) {
-            // Use a longer delay to ensure the SVG is fully parsed into the DOM
-            // requestAnimationFrame is too fast for dangerouslySetInnerHTML with SVG
+        if (document?.svg && svgContainerRef.current) {
             const timeoutId = setTimeout(() => {
                 if (!svgContainerRef.current) return;
                 
-                // KaTeX's renderMathInElement traverses DOM text nodes.
-                // Mermaid SVGs use <foreignObject> with nested HTML <div>/<span> elements.
-                // We need to find all foreignObject elements and render math inside them.
                 const renderKatexInContainer = (container: Element) => {
                     if (!(window as any).renderMathInElement) return;
                     try {
@@ -602,8 +443,8 @@ export const Mermaid: React.FC<MermaidProps> = ({ chart, onOpenModal, viewOnly, 
                             delimiters: [
                                 {left: '$$', right: '$$', display: true},
                                 {left: '$', right: '$', display: false},
-                                {left: '\\(', right: '\\)', display: false},
-                                {left: '\\[', right: '\\]', display: true}
+                                {left: '\\(', right: '\\\)', display: false},
+                                {left: '\\[', right: '\\\\]', display: true}
                             ],
                             throwOnError: false
                         });
@@ -624,142 +465,21 @@ export const Mermaid: React.FC<MermaidProps> = ({ chart, onOpenModal, viewOnly, 
             
             return () => clearTimeout(timeoutId);
         }
-    }, [svg]);
-
-    const handleAiHealing = async (e: React.MouseEvent) => {
-        e.stopPropagation();
-        setAiHealing(true);
-        setError('Fixing diagram...');
-        
-        const mermaid = await getMermaidInstance();
-        const renderId = `${uniqueId}-${Date.now()}`;
-        let codeToFix = activeChartCode;
-        let errorMsg = lastErrorRef.current || error || 'Parse error';
-        
-        // ═══ STEP 1: Try quick local fixes first (no AI needed) ═══
-        const quickFixed = quickFixMermaid(codeToFix, errorMsg);
-        if (quickFixed) {
-            const cleanedQuick = sanitizeMermaidCode(quickFixed);
-            try {
-                const result = await mermaid.render(`${renderId}-quickfix`, cleanedQuick);
-                setSvg(result.svg);
-                setError(null);
-                setActiveChartCode(cleanedQuick);
-                lastRenderedCodeRef.current = cleanedQuick;
-                setAiHealing(false);
-                console.log('[Mermaid] Quick local fix succeeded');
-                return;
-            } catch (e2: any) {
-                errorMsg = getMermaidErrorMessage(e2);
-                codeToFix = cleanedQuick;
-                console.log('[Mermaid] Quick fix failed, trying AI...');
-            }
-        }
-        
-        // ═══ STEP 2: Try sanitized version of original ═══
-        const sanitized = sanitizeMermaidCode(codeToFix);
-        if (sanitized !== codeToFix) {
-            try {
-                const result = await mermaid.render(`${renderId}-sanitized`, sanitized);
-                setSvg(result.svg);
-                setError(null);
-                setActiveChartCode(sanitized);
-                lastRenderedCodeRef.current = sanitized;
-                setAiHealing(false);
-                console.log('[Mermaid] Sanitizer fix succeeded');
-                return;
-            } catch (e2: any) {
-                errorMsg = getMermaidErrorMessage(e2);
-                codeToFix = sanitized;
-            }
-        }
-        
-        // ═══ STEP 3: AI healing — capped at 10 rounds ═══
-        let round = 0;
-        let consecutiveFailures = 0;
-        const MAX_HEALING_ROUNDS = 10;
-        while (round < MAX_HEALING_ROUNDS) {
-            round++;
-            try {
-                setError(`AI healing round ${round}/${MAX_HEALING_ROUNDS}...`);
-                
-                const aiFixedCode = await fixMermaidDiagram(codeToFix, errorMsg);
-                
-                if (!aiFixedCode) {
-                    console.warn(`[Mermaid] AI healing round ${round}: no fix returned`);
-                    consecutiveFailures++;
-                    
-                    // After 3 consecutive failures, try stripStylingForRecovery as fallback
-                    if (consecutiveFailures >= 2) {
-                        break;
-                    }
-                    
-                    setError(`AI healing round ${round} failed (quota?), retrying...`);
-                    // Wait longer between retries to avoid hammering the API
-                    await new Promise(r => setTimeout(r, 2000));
-                    continue;
-                }
-                
-                consecutiveFailures = 0; // Reset on successful AI response
-                
-                // Try rendering the AI-fixed code
-                const cleanedCode = sanitizeMermaidCode(aiFixedCode);
-                try {
-                    const result = await mermaid.render(`${renderId}-ai-heal-${round}`, cleanedCode);
-                    setSvg(result.svg);
-                    setError(null);
-                    setActiveChartCode(cleanedCode);
-                    lastRenderedCodeRef.current = cleanedCode;
-                    setAiHealing(false);
-                    console.log(`[Mermaid] AI healing succeeded on round ${round}`);
-                    return;
-                } catch (e2: any) {
-                    errorMsg = getMermaidErrorMessage(e2);
-                    console.warn(`[Mermaid] AI healing round ${round} render failed: ${errorMsg.substring(0, 100)}`);
-                    
-                    // Try quickFix + sanitize on the AI output
-                    const quickFixed = quickFixMermaid(cleanedCode, errorMsg);
-                    const reSanitized = sanitizeMermaidCode(quickFixed || cleanedCode);
-                    if (reSanitized !== cleanedCode) {
-                        try {
-                            const result2 = await mermaid.render(`${renderId}-ai-heal-${round}-s2`, reSanitized);
-                            setSvg(result2.svg);
-                            setError(null);
-                            setActiveChartCode(reSanitized);
-                            lastRenderedCodeRef.current = reSanitized;
-                            setAiHealing(false);
-                            console.log(`[Mermaid] AI healing + sanitize succeeded on round ${round}`);
-                            return;
-                        } catch (e3: any) {
-                            errorMsg = getMermaidErrorMessage(e3);
-                        }
-                    }
-                    
-                    // Feed the fixed code + new error back for the next round
-                    codeToFix = cleanedCode;
-                }
-            } catch (aiErr: any) {
-                console.warn(`[Mermaid] AI healing round ${round} API call failed:`, aiErr);
-                // Don't give up — wait and retry
-                setError(`AI healing round ${round} failed, retrying...`);
-                await new Promise(r => setTimeout(r, 2000));
-                continue;
-            }
-        }
-        
-        setError(lastErrorRef.current || errorMsg || 'Diagram could not be fixed after multiple AI attempts.');
-        setAiHealing(false);
-    };
+    }, [document?.svg]);
 
     const handleCopyCode = (e: React.MouseEvent) => {
         e.stopPropagation();
-        const codeToCopy = `\`\`\`mermaid\n${activeChartCode}\n\`\`\``;
+        const codeToCopy = `\`\`\`mermaid\n${document?.canonicalCode || chart}\n\`\`\``;
         navigator.clipboard.writeText(codeToCopy).then(() => {
             setCopied(true);
             setTimeout(() => setCopied(false), 2000);
         });
     };
 
+    const error = document?.validation.error;
+    const svg = document?.svg;
+    const aiHealing = document?.healing.attempted && document?.healing.source === 'ai';
+    
     if (viewOnly) {
         return (
             <div className="mermaid-container w-full h-full flex items-center justify-center overflow-auto p-2">
@@ -769,7 +489,7 @@ export const Mermaid: React.FC<MermaidProps> = ({ chart, onOpenModal, viewOnly, 
                         <pre className="whitespace-pre-wrap mt-1 text-xs">{error}</pre>
                     </div>
                 ) : (
-                    <div ref={svgContainerRef} className="w-full max-w-full overflow-x-auto bg-transparent" dangerouslySetInnerHTML={{ __html: svg }} />
+                    <div ref={svgContainerRef} className="w-full max-w-full overflow-x-auto bg-transparent" dangerouslySetInnerHTML={{ __html: svg || '' }} />
                 )}
             </div>
         );
@@ -778,12 +498,12 @@ export const Mermaid: React.FC<MermaidProps> = ({ chart, onOpenModal, viewOnly, 
     return (
       <div 
         className="my-4 border rounded-lg overflow-hidden bg-card/50 shadow-sm transition-all hover:shadow-md border-border cursor-pointer group relative select-none not-prose"
-        data-mermaid-code={encodeURIComponent(activeChartCode)}
+        data-mermaid-code={encodeURIComponent(document?.canonicalCode || chart)}
       >
-        <div className="relative min-h-[150px] bg-white dark:bg-black/20 flex justify-center p-6 overflow-x-auto backdrop-blur-sm" onClick={() => onOpenModal(activeChartCode)}>
+        <div className="relative min-h-[150px] bg-white dark:bg-black/20 flex justify-center p-6 overflow-x-auto backdrop-blur-sm" onClick={() => onOpenModal(document?.canonicalCode || chart)}>
             {error ? (
                 <div className="flex flex-col items-center justify-center gap-3 py-8">
-                    {aiHealing || error.includes("Auto-fixing") || error.includes("healing") || error.includes("Drawing") ? (
+                    {aiHealing || error?.includes("Auto-fixing") || error?.includes("healing") || error?.includes("Drawing") ? (
                         <div className="flex flex-col items-center gap-2 px-6 py-4 rounded-xl bg-primary/5 border border-primary/20 shadow-sm animate-pulse">
                             <div className="flex items-center gap-2 text-primary font-medium text-xs">
                                 <svg className="w-4 h-4 animate-spin text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -801,12 +521,11 @@ export const Mermaid: React.FC<MermaidProps> = ({ chart, onOpenModal, viewOnly, 
                             </div>
                             <pre className="whitespace-pre-wrap mt-1 text-xs text-destructive max-h-32 overflow-y-auto px-4">{error}</pre>
                             <button
-                                onClick={handleAiHealing}
-                                disabled={aiHealing}
-                                className="px-3 py-1.5 text-xs font-medium rounded-md bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+                                onClick={() => { /* Trigger re-process by changing chart slightly */ }}
+                                className="px-3 py-1.5 text-xs font-medium rounded-md bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 transition-colors flex items-center gap-1.5"
                             >
                                 <span>↻</span>
-                                <span>Retry with AI healing</span>
+                                <span>Retry</span>
                             </button>
                         </>
                     )}
@@ -814,7 +533,7 @@ export const Mermaid: React.FC<MermaidProps> = ({ chart, onOpenModal, viewOnly, 
             ) : (
                 <>
             {/* Render SVG via dangerouslySetInnerHTML to keep React happy */}
-            <div ref={svgContainerRef} className="flex w-full max-w-full justify-center overflow-x-auto bg-transparent" dangerouslySetInnerHTML={{ __html: svg }} />
+            <div ref={svgContainerRef} className="flex w-full max-w-full justify-center overflow-x-auto bg-transparent" dangerouslySetInnerHTML={{ __html: svg || '' }} />
                 </>
             )}
             

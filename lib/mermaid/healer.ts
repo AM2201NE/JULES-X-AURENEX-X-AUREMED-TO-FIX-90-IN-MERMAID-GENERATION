@@ -26,7 +26,7 @@ export function getCachedHealedMermaid(rawCode: string): string | null {
             memoryHealedCache.set(key, stored);
             return stored;
         }
-    } catch (e) {}
+    } catch (e) { }
     return null;
 }
 
@@ -37,7 +37,7 @@ export function setCachedHealedMermaid(rawCode: string, healedCode: string): voi
     memoryHealedCache.set(key, cleanHealed);
     try {
         localStorage.setItem(`${HEALED_CACHE_KEY}_${key}`, cleanHealed);
-    } catch (e) {}
+    } catch (e) { }
 }
 
 export function buildHealingContext(code: string, errorMessage: string): MermaidHealingContext {
